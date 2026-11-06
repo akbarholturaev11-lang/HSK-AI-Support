@@ -69,21 +69,45 @@ export function validateKnowledgeRecord(record, topic) {
   return facts.length ? { topic, facts, source_commit: record.source_commit } : null;
 }
 
-export async function lookupKnowledge(env, input) {
-  if (!env.KB) return { status: "unconfigured" };
-  const topics = selectKnowledgeTopics(input);
-  if (!topics.length) return { status: "unknown_topic" };
-  const loaded = [];
-  for (const topic of topics) {
-    try {
-      const object = await env.KB.get("knowledge/" + topic + ".json");
-      if (!object) return { status: "unavailable" };
-      const valid = validateKnowledgeRecord(await object.json(), topic);
-      if (!valid) return { status: "unavailable" };
-      loaded.push(valid);
-    } catch {
-      return { status: "unavailable" };
-    }
+// Use the current question first, then the latest user/FAQ context.
+// If one topic is selected, also read the closest related R2 file.
+// At most two objects per request: no embeddings, extra AI calls or main backend load.
+const RELATED = Object.freeze({
+  payments:["subscriptions","accounts"],
+  subscriptions:["payments","general"],
+  accounts:["pwa","android"],
+  android:["accounts","general"],
+  pwa:["general","accounts"],
+  telegram:["accounts","general"],
+  general:["pwa","android"]
+});
+
+export function selectContextualKnowledgeTopics(input, history = []) {
+  const direct=selectKnowledgeTopics(input);
+  const previous=history.filter(x=>x.role==="user")
+    .slice(-4).map(x=>String(x.content||"")).reverse();
+  const past=previous.flatMap(text=>selectKnowledgeTopics(text)).filter((v,i,a)=>a.indexOf(v)===i);
+  const selected=direct.length?direct.slice():past.slice(0,1);
+  if (!selected.length) selected.push("general");
+  for(const topic of [...past,...(RELATED[selected[0]]||[])]){
+    if(selected.length>=2)break;
+    if(topic!==selected[0]&&!selected.includes(topic))selected.push(topic);
   }
-  return { status: "ok", topics, facts: loaded.flatMap(x => x.facts).slice(0, 30) };
+  return selected.slice(0,2);
+}
+
+export async function lookupKnowledge(env, input, { history = [] } = {}) {
+  if (!env.KB) return { status:"unconfigured" };
+  const topics=selectContextualKnowledgeTopics(input,history);
+  const loaded=[];
+  for(const topic of topics){
+    try {
+      const object=await env.KB.get("knowledge/"+topic+".json");
+      if (!object) continue;
+      const valid=validateKnowledgeRecord(await object.json(),topic);
+      if(valid)loaded.push(valid);
+    }catch { /* Try the second, related topic rather than stopping prematurely. */ }
+  }
+  if (!loaded.length) return { status:"unavailable" };
+  return { status:"ok",topics:loaded.map(x=>x.topic),facts:loaded.flatMap(x=>x.facts).slice(0,32) };
 }
