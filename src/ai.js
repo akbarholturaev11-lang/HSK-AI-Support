@@ -78,17 +78,19 @@ async function backupProvider(env,messages,imageDataUrl,claimQuota,targetLang) {
   const allow=(name) => String(env[name]||"").toLowerCase()==="true";
   if (!env.AI || !allow("BACKUP_ENABLED") ||
       !allow("BACKUP_BILLING_APPROVED") || !allow("BACKUP_SPEND_CAP_VERIFIED")) return null;
-  const route=String(env.AI_GATEWAY_BACKUP_ROUTE||"").trim();
   const gatewayId=String(env.AI_GATEWAY_ID||"").trim();
-  if (!/^[a-z0-9_-]{1,64}$/i.test(route) || !/^[a-z0-9_-]{1,64}$/i.test(gatewayId)) return null;
-  // Defense in depth; call-count caps are NOT billing hard caps and require
-  // separate dashboard-side USD budget limits before flags may be enabled.
+  if (!/^[a-z0-9_-]{1,64}$/i.test(gatewayId)) return null;
+  // Use the officially supported catalog model through the AI Gateway binding.
+  // A previously created dynamic route is invalid and must NOT be invoked.
+  const model="minimax/m3.1-flash";
+  // Defense in depth: these are request-count guards, NOT dollar hard caps.
+  // Gateway spending rules ($0.20/day and $3/30days) must be verified first.
   if (!await claimQuota(env,"backup-day",20)) return null;
   const month=new Date().toISOString().slice(0,7);
   if (!await claimQuota(env,"backup-month",300,month)) return null;
   try {
-    const response=await env.AI.run("dynamic/"+route,{
-      messages,max_completion_tokens:768,reasoning_effort:"low"
+    const response=await env.AI.run(model,{
+      messages,max_completion_tokens:1024,reasoning_effort:"low"
     },{gateway:{id:gatewayId}});
     return decide(response,targetLang);
   }catch {
