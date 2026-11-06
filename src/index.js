@@ -399,6 +399,7 @@ export default {
         env.DB.prepare("DELETE FROM processed_updates WHERE created_at < ?").bind(now - 7 * 86400),
         env.DB.prepare("DELETE FROM quotas WHERE day < ?").bind(dayKey(Date.now() - 3 * 86400000)),
         env.DB.prepare("DELETE FROM tickets WHERE updated_at < ?").bind(now - 90 * 86400),
+        env.DB.prepare("DELETE FROM support_context WHERE updated_at < ?").bind(now - 3600),
         env.DB.prepare("DELETE FROM admin_links WHERE ticket_id NOT IN (SELECT id FROM tickets)")
       ]);
     }
