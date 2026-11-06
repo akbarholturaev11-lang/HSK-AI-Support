@@ -55,7 +55,7 @@ export function isConversationalTurn(message) {
   if(!s || s.length>160) return false;
   if(explicitlyRequestedLanguage(s)) {
     // A language request combined with a product/payment question still needs KB.
-    return !/(?:оплат|пардохт|тўлов|тулов|подпис|обуна|аккаунт|карта|пул|ишлама|ошиб|ошибка|хато|баг|error|payment|refund|account)/u.test(s);
+    return !/(?:оплат|пардохт|тўлов|тулов|подпис|обуна|аккаунт|карта|пул|ишлама|ошиб|ошибка|хато|баг|error|payment|refund|account|тариф|нарх|цена|стоим|сколько|қанча|неча|скидк|discount|price|receipt|чек|транзак|банк|баланс|статус|status|вход|логин|регист|прилож|илова|барнома|android|андроид|pwa|telegram|телеграм|мини\s*ап|mini\s*app|курс|дарс|урок|lesson|hsk|хск)/u.test(s);
   }
   return /^(?:салом(?:\s+алейкум)?|ассалому\s+алайкум|salom(?:\s+aleykum)?|assalomu\s+alaykum|привет|здравствуйте|добрый\s+(?:день|вечер|утро)|hello|hi)[\s!?.…]*$/u.test(s) ||
     /^(?:рахмат|раҳмат|ташаккур|спасибо|спс|thanks|thank\s+you)[\s!?.…]*$/u.test(s) ||
