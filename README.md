@@ -1,83 +1,64 @@
-# HSK AI Support — Cloudflare Worker
+# HSK AI Support — standalone Telegram support bot
 
-Independent Telegram product-support bot for HSK AI. **Zero requests to the main HSK AI backend**. Stack: Cloudflare Worker, D1, native Cloudflare Workers AI and Telegram Bot API.
+Production Worker: https://hsk-ai-support.hskaiiapp.workers.dev  
+Health: https://hsk-ai-support.hskaiiapp.workers.dev/health  
+GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 
-## MVP functionality
-- Auto-language and entry-source detection: RU/TJ/UZ; android, pwa, bot, miniapp, web, ig, desktop.
-- FAQ buttons; bounded AI answers using only confirmed generic facts.
-- Human operator via a private Telegram group. Reply to a ticket message to send text/media back; reply /close to resolve the ticket.
-- Screenshots go directly to the operator, not to a media storage or image AI.
-- 60 user messages/day, 3 AI requests/user/day, 60 global AI requests/day; webhook secret validation and replay deduplication.
-- Only limited metadata is stored, not messages or media. Daily metadata cleanup.
+**Architecture:** Cloudflare Workers + Cloudflare D1 + native Workers AI + Telegram Bot API. **No requests to the main HSK AI Railway backend.**
 
-The support channel is always available, but operators are not guaranteed 24/7. Workers AI uses Cloudflare's free daily allocation; after the quota is exhausted AI calls fail safely and tickets go to an operator. The bot cannot verify payments, subscription ownership or HSK AI accounts.
+## Features
 
-## Deploy
+- RU/TJ/UZ language and source detection from Telegram deep links; Telegram-language fallback.
+- Short FAQ and natural AI answers: 1–2 sentences, maximum 220 characters.
+- Native Telegram typing indicator during AI processing.
+- Maximum 3 AI calls/user/day and 60 AI calls globally/day, with operator fallback.
+- Private operator Telegram group: reply to a ticket message to answer the user; reply /close to close it.
+- Photos/media forwarded to the operator without storing media files.
+- D1 stores only Telegram IDs, source, language, ticket status, and reply mappings; no message bodies.
+- Daily metadata cleanup and idempotent Telegram webhook setup.
 
-Requires Node.js 20+, a Cloudflare account, a Telegram bot and a **private** operator group.
+## Configured in Cloudflare
 
-1. Install and authenticate Cloudflare:
+- Worker: hsk-ai-support
+- D1: hsk-ai-support (DB binding; SQL schema already initialized)
+- AI: native Cloudflare Workers AI, multilingual GLM-4.7-Flash model
+- Worker origin: https://hsk-ai-support.hskaiiapp.workers.dev
+- Cron: 5-minute webhook setup checks plus daily cleanup at 03:00 UTC
+- Random WEBHOOK_SECRET already generated and stored securely on Cloudflare. Do not overwrite unnecessarily.
 
-~~~bash
-npm install
-npx wrangler login
-npx wrangler d1 create hsk-ai-support
-~~~
+### What the bot owner still needs to do
 
-2. Replace REPLACE_WITH_YOUR_D1_DATABASE_ID in wrangler.toml with the created database ID. Then run:
+**1. Add BOT_TOKEN secret to Cloudflare.** Open Cloudflare Dashboard → Workers & Pages → hsk-ai-support → Settings → Variables and Secrets → Add. Type **Secret**, name BOT_TOKEN, value: token from Telegram BotFather. Never paste the bot token in GitHub or chat.
 
-~~~bash
-npm run db:init
-~~~
+The Worker will register its Telegram webhook using the secret already stored in Cloudflare. There is no need to run a separate Telegram API command.
 
-3. Create secrets in the Cloudflare Worker (never commit them to GitHub):
+**2. Create a private operator Telegram group**, add the HSK AI Support Bot, and send /chatid from a group administrator. The bot verifies administrator status and replies with the numeric group chat ID. If necessary use /chatid@YOUR_BOT_USERNAME.
 
-~~~bash
-npx wrangler secret put BOT_TOKEN
-npx wrangler secret put WEBHOOK_SECRET
-npx wrangler secret put ADMIN_CHAT_ID
-~~~
+**3. Save ADMIN_CHAT_ID as a Cloudflare Secret**, using the numeric chat ID from step 2. It is safe to ask the project owner to configure this ID; unlike a bot token, a group ID is not an access credential.
 
-The WEBHOOK_SECRET must contain only ASCII letters, digits, dashes or underscores, be 1–256 chars and differ from the Telegram bot token. ADMIN_CHAT_ID is the numeric chat ID of a private Telegram operator group in which the bot has been added.
+**4. Test:** /start in the private support chat, send an unknown payment question, reply to its ticket from the operator group, then reply /close. Also test RU/TJ/UZ deep links and screenshots.
 
-4. AI is provided by the Cloudflare Workers AI binding in wrangler.toml, using the multilingual @cf/zai-org/glm-4.7-flash model. No external AI key is required. Free-plan quotas apply; exceeded limits fall back to an operator.
+Support requests can be accepted around the clock, but an actual human operator is not guaranteed to reply 24/7.
 
-5. Run tests and deploy:
+## Deep-link examples
 
-~~~bash
-npm test
-npm run deploy
-~~~
+Substitute the actual BotFather username if different:
 
-6. Set BOT_TOKEN, WEBHOOK_SECRET and WORKER_URL in your **own trusted terminal**, with WORKER_URL pointing to the deployed Worker origin without a trailing slash. Register webhook:
+- RU Android: https://t.me/hskai_support_bot?start=ru_android
+- TJ PWA: https://t.me/hskai_support_bot?start=tj_pwa
+- UZ Telegram: https://t.me/hskai_support_bot?start=uz_bot
+- RU Instagram: https://t.me/hskai_support_bot?start=ru_ig
+- TJ Instagram: https://t.me/hskai_support_bot?start=tj_ig
+- RU website: https://t.me/hskai_support_bot?start=ru_web
 
-~~~bash
-curl -fsS -X POST "https://api.telegram.org/bot$BOT_TOKEN/setWebhook" \
-  --data-urlencode "url=$WORKER_URL/webhook" \
-  --data-urlencode "secret_token=$WEBHOOK_SECRET" \
-  --data-urlencode "max_connections=1" \
-  --data-urlencode 'allowed_updates=["message","callback_query"]'
-~~~
+Deep links select source and language, but **do not authenticate a user account**.
 
-Check Telegram getWebhookInfo and send /start to the bot. Deploying the Worker does not itself register a Telegram webhook.
+## Source, tests and deployment
 
-## Localized entry points
-
-Adapt the username if BotFather assigned a different one:
-
-- https://t.me/hskai_support_bot?start=ru_android
-- https://t.me/hskai_support_bot?start=tj_pwa
-- https://t.me/hskai_support_bot?start=uz_bot
-- https://t.me/hskai_support_bot?start=ru_ig
-- https://t.me/hskai_support_bot?start=tj_ig
-- https://t.me/hskai_support_bot?start=ru_web
-
-A deep link gives language/source, **not account authorization**. Telegram must receive the user's Start action.
-
-## Operator rules
-
-Use only a private Telegram group with trusted staff. Reply to any copied ticket message to answer its user; reply /close to mark the ticket resolved. Avoid asking for passwords, credit card numbers, CVV, login tokens and SMS codes.
-
-Database retention: webhook IDs 7 days, rate counters 3 days, ticket metadata 90 days. No user message bodies or uploaded files stored in D1.
-
-Run npm test locally. GitHub Actions also runs tests on pushes and PRs. The Worker was initially deployed through Cloudflare API; GitHub auto-deploy is not configured yet, so push alone does not update production.
+- Node.js 22+, npm test for unit tests.
+- GitHub Actions runs unit tests on each push.
+- wrangler.toml already points to the provisioned D1 database.
+- Production was deployed with Cloudflare API; **GitHub auto-deployment is NOT configured**. GitHub pushes do not automatically update the production Worker.
+- To redeploy from a trusted authenticated environment use npm run deploy. Verify that production secrets remain in Cloudflare.
+- Do not request or store passwords, card numbers, CVV, login tokens or SMS codes.
+- Workers AI usage has a Cloudflare free daily quota, and requests beyond it fail safely to the operator.
