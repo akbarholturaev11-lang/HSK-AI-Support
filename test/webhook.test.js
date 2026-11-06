@@ -5,7 +5,15 @@ import worker from "../src/index.js";
 function stub() {
   const calls = [], processed = new Set(), users = new Map(), tickets = new Map(), links = new Map(), quotas = new Map(), settings = new Map();
   let nextTicket = 1;
-  const DB = { prepare(sql) { return { bind(...args) { return {
+  const DB = { prepare(sql) { return {
+    async first() {
+      if (sql.startsWith("SELECT value FROM service_settings")) {
+        const value = settings.get("telegram_webhook_sha256");
+        return value ? { value } : null;
+      }
+      return null;
+    },
+    bind(...args) { return {
     async run() {
       if (sql.startsWith("INSERT INTO service_settings")) {
         settings.set("telegram_webhook_sha256", args[0]);
