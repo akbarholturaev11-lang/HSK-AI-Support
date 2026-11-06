@@ -126,6 +126,8 @@ test("without AI key, user escalation and operator reply both work", async () =>
     assert.equal((await call(env, user)).status, 200);
     assert.equal(tickets.size, 1);
     assert.equal(calls[0].chat_id, "-100234");
+    assert.match(calls[0].text, /Как ответить/);
+    assert.match(calls[0].text, /Ответить/);
     assert.equal(links.get(400), 1);
     assert.equal(calls[1].chat_id, 51);
     const admin = { update_id: 201, message: { chat: { id: -100234, type: "supergroup" }, from: { id: 77 }, message_id: 999, text: "Уточните дату", reply_to_message: { message_id: 400 } } };
