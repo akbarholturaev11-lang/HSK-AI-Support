@@ -79,7 +79,7 @@ export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
     return OFFICIAL_LINKS.telegram;
 
   // Narrow public marketing requests before the generic FAQ rule.
-  const pageRequest=wantsLink || /(?:страниц|саҳифа|сахифа|сайт|website|где почитать|куда зайти)/u.test(q);
+  const pageRequest=wantsLink || /(?:страниц|саҳифа|сахифа|сайт|website|где почитать|куда зайти|\\bpage\\b)/u.test(q);
   const pageContext=pageRequest && wantsLink ? (q+" "+previous) : q;
   if (pageRequest) {
     if (/(?:google|гугл)/u.test(pageContext) &&
