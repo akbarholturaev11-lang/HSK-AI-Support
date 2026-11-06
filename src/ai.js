@@ -5,7 +5,6 @@ import { loadRecentConversation, saveConversationExchange } from "./conversation
 import { detectReplyLanguage, languageGuide, isObviouslyWrongLanguage } from "./language.js";
 
 const PRIMARY_MODEL = "@cf/google/gemma-4-26b-a4b-it";
-const BACKUP_MODEL = "minimax/m3.1-flash";
 
 function promptForSupport(lang, facts) {
   const languageInstructions=languageGuide(lang);
@@ -73,19 +72,23 @@ async function primaryProvider(env, messages, imageDataUrl) {
 }
 
 async function backupProvider(env,messages,imageDataUrl,claimQuota,targetLang) {
-  if (String(env.BACKUP_ENABLED || "").toLowerCase() !== "true" || !env.AI) return null;
-  // Conservative call-count budget guard: this is NOT the Cloudflare billing hard cap.
+  // This endpoint is paid: the user approved a plan, NOT activation.
+  // Require separate billing approval and verified spend controls.
+  const allow=(name) => String(env[name]||"").toLowerCase()==="true";
+  if (!env.AI || !allow("BACKUP_ENABLED") ||
+      !allow("BACKUP_BILLING_APPROVED") || !allow("BACKUP_SPEND_CAP_VERIFIED")) return null;
+  const route=String(env.AI_GATEWAY_BACKUP_ROUTE||"").trim();
+  const gatewayId=String(env.AI_GATEWAY_ID||"").trim();
+  if (!/^[a-z0-9_-]{1,64}$/i.test(route) || !/^[a-z0-9_-]{1,64}$/i.test(gatewayId)) return null;
+  // Defense in depth; call-count caps are NOT billing hard caps and require
+  // separate dashboard-side USD budget limits before flags may be enabled.
   if (!await claimQuota(env,"backup-day",20)) return null;
-  const month = new Date().toISOString().slice(0,7);
+  const month=new Date().toISOString().slice(0,7);
   if (!await claimQuota(env,"backup-month",300,month)) return null;
   try {
-    const configuredRoute = String(env.AI_GATEWAY_BACKUP_ROUTE || "").trim();
-    const useRoute = Boolean(configuredRoute && env.AI_GATEWAY_ID);
-    const model = useRoute ? "dynamic/" + configuredRoute : (env.BACKUP_MODEL || BACKUP_MODEL);
-    const options = useRoute ? { gateway:{ id:String(env.AI_GATEWAY_ID) } } : undefined;
-    const response=await env.AI.run(model,{
+    const response=await env.AI.run("dynamic/"+route,{
       messages,max_completion_tokens:768,reasoning_effort:"low"
-    },options);
+    },{gateway:{id:gatewayId}});
     return decide(response,targetLang);
   }catch {
     console.warn("support_backup_ai_unavailable");
