@@ -122,12 +122,13 @@ test("without AI key, user escalation and operator reply both work", async () =>
     return Response.json({ ok: true, result: { message_id: id++ } });
   };
   try {
-    const user = { update_id: 200, message: { chat: { id: 51, type: "private" }, from: { id: 51, language_code: "ru", first_name: "Test" }, message_id: 55, text: "У меня пропала подписка" } };
+    const user = { update_id: 200, message: { chat: { id: 51, type: "private" }, from: { id: 51, language_code: "ru", first_name: "Test", username: "my_support_user" }, message_id: 55, text: "У меня пропала подписка" } };
     assert.equal((await call(env, user)).status, 200);
     assert.equal(tickets.size, 1);
     assert.equal(calls[0].chat_id, "-100234");
     assert.match(calls[0].text, /Как ответить/);
     assert.match(calls[0].text, /Ответить/);
+    assert.match(calls[0].text, /Telegram: <a href="https:\/\/t\.me\/my_support_user">@my_support_user<\/a>/);
     assert.equal(links.get(400), 1);
     assert.equal(calls[1].chat_id, 51);
     const admin = { update_id: 201, message: { chat: { id: -100234, type: "supergroup" }, from: { id: 77 }, message_id: 999, text: "Уточните дату", reply_to_message: { message_id: 400 } } };
@@ -332,4 +333,25 @@ test("FAQ and AI work before operator group exists; handoff explains unavailabil
     assert.match(calls.at(-1).data.text,/Оператор пока недоступен/);
     assert.ok(!calls.some(c=>c.data.chat_id===undefined && c.method==="sendMessage"));
   } finally { globalThis.fetch = original; }
+});
+
+test("ticket with no Telegram username retains user ID and safe fallback", async () => {
+  const { env } = stub();
+  const calls = [];
+  const previous = globalThis.fetch;
+  let n = 900;
+  globalThis.fetch = async (_url, init) => {
+    calls.push(JSON.parse(init.body));
+    return Response.json({ ok:true, result:{ message_id:n++ } });
+  };
+  try {
+    const update = { update_id: 703, message: {
+      chat: { id: 108, type: "private" },
+      from: { id: 108, language_code: "ru", first_name: "User" },
+      message_id: 11, text: "/operator"
+    }};
+    assert.equal((await call(env, update)).status, 200);
+    assert.match(calls[0].text, /Telegram: username not set/);
+    assert.match(calls[0].text, /ID: <code>108<\/code>/);
+  } finally { globalThis.fetch = previous; }
 });
