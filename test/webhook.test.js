@@ -845,3 +845,84 @@ test("Android download and Instagram questions return only verified clickable li
     assert.ok(!msgs.some(x=>x.includes("fake-hskai")));
   }finally{globalThis.fetch=previous;}
 });
+
+
+test("photo with Russian interface criticism reaches vision instead of file-error reply",async()=>{
+  const {env,tickets}=stub();
+  const topics=[],modelCalls=[],messages=[];
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async key=>{
+    topics.push(key);
+    return {json:async()=>({topic:"general",source_commit:sha,facts:["HSK AI is a Chinese learning product."]})};
+  }};
+  env.AI={run:async(_model,request)=>{
+    modelCalls.push(request);
+    return {response:JSON.stringify({action:"answer",answer:"На фото экран тарифов: текст выглядит мелким. Что именно неудобно — размер шрифта или расположение блоков?"})};
+  }};
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url).endsWith("/getFile"))return Response.json({ok:true,result:{file_path:"photos/ui.jpg",file_size:6}});
+    if(String(url).includes("/file/bot"))return new Response(Uint8Array.from([255,216,255,1,2,3]));
+    const method=String(url).split("/").pop();
+    if(method==="sendMessage")messages.push(JSON.parse(init.body));
+    return Response.json({ok:true,result:{message_id:321}});
+  };
+  try {
+    const m={update_id:29901,message:{chat:{id:299,type:"private"},from:{id:299,language_code:"ru"},
+      message_id:29901,caption:"интерфейс не очень хороший",photo:[{file_id:"u1",file_size:6}]}};
+    assert.equal((await call(env,m)).status,200);
+    assert.deepEqual(topics,["knowledge/general.json"]);
+    assert.equal(modelCalls.length,1);
+    assert.equal(modelCalls[0].max_tokens,320,"photos need enough output tokens for JSON");
+    assert.ok(modelCalls[0].messages.at(-1).content.some(p=>p.type==="image_url"));
+    assert.match(messages.at(-1).text,/экран тарифов/);
+    assert.doesNotMatch(messages.at(-1).text,/Не удалось обработать файл/);
+    assert.equal(tickets.size,0);
+  } finally {globalThis.fetch=original;}
+});
+
+test("valid image with failed AI receives useful feedback acknowledgment, not a false file failure",async()=>{
+  const {env,tickets}=stub();
+  env.AI={run:async()=>({response:'{"action":"handoff","answer":""}'})};
+  const sent=[];let copyMessages=0;
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url).endsWith("/getFile"))return Response.json({ok:true,result:{file_path:"photos/ui.jpg",file_size:6}});
+    if(String(url).includes("/file/bot"))return new Response(Uint8Array.from([255,216,255,1,2,3]));
+    const method=String(url).split("/").pop();
+    if(method==="sendMessage")sent.push(JSON.parse(init.body));
+    if(method==="copyMessage")copyMessages++;
+    return Response.json({ok:true,result:{message_id:422}});
+  };
+  try{
+    const m={update_id:29902,message:{chat:{id:300,type:"private"},from:{id:300,language_code:"ru"},
+      message_id:29902,caption:"интерфейс не очень хороший",photo:[{file_id:"u1",file_size:6}]}};
+    assert.equal((await call(env,m)).status,200);
+    assert.match(sent.at(-1).text,/Спасибо за отзыв об интерфейсе/);
+    assert.doesNotMatch(sent.at(-1).text,/Не удалось загрузить изображение/);
+    assert.equal(copyMessages,0);
+    assert.equal(tickets.size,0);
+  }finally{globalThis.fetch=original;}
+});
+
+test("failed Telegram photo download is reported separately from AI uncertainty",async()=>{
+  const {env,tickets}=stub();
+  const sent=[];let modelCalls=0;
+  env.AI={run:async()=>{modelCalls++;return {response:"{}"};}};
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url).endsWith("/getFile"))return Response.json({ok:true,result:{file_path:"photos/ui.jpg",file_size:6}});
+    if(String(url).includes("/file/bot"))return new Response("error",{status:503});
+    const method=String(url).split("/").pop();
+    if(method==="sendMessage")sent.push(JSON.parse(init.body));
+    return Response.json({ok:true,result:{message_id:523}});
+  };
+  try{
+    const m={update_id:29903,message:{chat:{id:301,type:"private"},from:{id:301,language_code:"ru"},
+      message_id:29903,caption:"интерфейс не очень хороший",photo:[{file_id:"u1",file_size:6}]}};
+    assert.equal((await call(env,m)).status,200);
+    assert.match(sent.at(-1).text,/Не удалось загрузить изображение/);
+    assert.equal(modelCalls,0);
+    assert.equal(tickets.size,0);
+  }finally{globalThis.fetch=original;}
+});
