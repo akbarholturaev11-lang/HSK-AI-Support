@@ -1,7 +1,7 @@
 # HSK AI Support — V2 архитектура режаси
 
 **Сана:** 2026-11-06
-**Ҳолат:** DRAFT — муҳокама учун, ҳозирча implementation ва production ўзгаришига рухсат йўқ.
+**Ҳолат:** DRAFT — архитектура муҳокамада. ChatGPT Scheduled Agent ишга қўйилди; Cloudflare R2/sync ва AI Gateway ўзгаришлари ҳали бажарилмаган.
 **Қамров:** фақат HSK AI Support Bot. Асосий HSK AI Railway/PostgreSQL серверига сўров юборилмайди.
 
 ## 1. Тасдиқланган қарорлар
@@ -52,6 +52,8 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 **Хавфсизликнинг битта зарур чегараси:** `main`'даги код ҳамма user'га аллақачон deploy қилинган дегани эмас. Агент ишончсиз, фақат режалаштирилган ёки ҳали тарқатилмаган функцияни **ҳозир фаол** деб KB'га киритмайди. Бундай ўзгаришга тегмайди, шубҳали ҳолатни қисқа ёзиб қолдиради. Бу owner approval жараёни эмас, фактни сохталаштирмаслик учун автоматик filter.
 
 **Боғланиш:** ChatGPT Scheduled Agent → GitHub Support repo'даги `knowledge/` файллар → GitHub Actions автоматик R2 sync → Support Worker файлини private R2 binding билан ўқийди. Агент R2 API билан қўлбола ишламайди, шу сабаб API upload/token ва қўл deploy қийинчиликлари камроқ. GitHub Actions R2 sync фақат тегишли JSON ўзгарганда ишлайди. Тикетлар ва бошқа маълумотлар ҳозирги D1'да қолади.
+
+**Агент:** ChatGPT Schedule'да `HSK AI KB Sync` фаол, 4 соатлик текширув. KB'да янги факт бўлмаса файл ва хабар ўзгармайди. Агент GitHub'га ёзиши мумкин; R2 sync учун алоҳида техник улаш ҳали шарт.
 
 **Маълум чеклов:** Cloudflare аккаунтда R2 ҳали enable қилинмаган (Cloudflare API: `10042: Please enable R2 through the Cloudflare Dashboard`). R2'га publish қилиш учун owner бир марта R2'ни ёқиши ва GitHub sync учун чекланган credential созланиши керак; шунгача R2'га ёзилган деб кўрсатиш мумкин эмас.
 
@@ -118,7 +120,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 ## 9. Ҳозир бажарилмайдиган ишлар
 
-Р2 bucket, AI Gateway paid route, D1 migration, конфигурация ёки Worker deployment **ҳозир қилинмайди**. Бу фақат дизайн режаси. Ҳозирги Support Bot одатдагидек ишлашда давом этади.
+R2 bucket, AI Gateway paid route, D1 migration ва Worker deployment **ҳозир қилинмайди**. Фақат ChatGPT Scheduled Agent яратилди; R2 enable ва KB→R2 sync ҳали тайёр эмас. Ҳозирги Support Bot одатдагидек ишлашда давом этади.
 
 ## 10. Cloudflare расмий маълумотлар
 
