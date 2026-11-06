@@ -29,3 +29,8 @@ CREATE TABLE IF NOT EXISTS processed_updates (
   update_id INTEGER PRIMARY KEY,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS service_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
