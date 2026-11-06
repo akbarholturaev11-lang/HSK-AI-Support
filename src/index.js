@@ -31,6 +31,8 @@ async function sendUser(env, tgId, text, replyMarkup = null) {
   return telegram(env, "sendMessage", {
     chat_id: tgId,
     text,
+    // Keep URLs clickable, but prevent large Telegram link preview cards.
+    link_preview_options: { is_disabled: true },
     ...(replyMarkup ? { reply_markup: replyMarkup } : {})
   });
 }
