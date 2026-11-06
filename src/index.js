@@ -166,8 +166,6 @@ async function telegramImage(env, message) {
 
 async function askAi(env, userId, lang, input, imageDataUrl = null) {
   if (!env.AI && !(env.AI_API_KEY && env.AI_MODEL)) return null;
-  if (!await claimQuota(env,"ai-user:"+userId,20)) return null;
-  if (!await claimQuota(env,"ai-global",600)) return null;
   await showTyping(env,userId);
   const typingTimer=setInterval(()=>{void showTyping(env,userId);},4000);
   try {
