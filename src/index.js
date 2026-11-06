@@ -147,7 +147,7 @@ async function askAi(env, userId, lang, input) {
   const knowledge = await loadKnowledge(env, input, history);
   if (!knowledge) return null;
   if (!await claimQuota(env, "ai-user:" + userId, 20)) return null;
-  if (!await claimQuota(env, "ai-global", 60)) return null; // provisional safety ceiling
+  // Platform Neuron quota and guarded paid-backup budgets enforce shared ceilings.
   await showTyping(env, userId);
   const typingTimer = setInterval(() => { void showTyping(env, userId); }, 4000);
   try {
@@ -169,7 +169,6 @@ async function handlePrivate(env, message) {
     await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
     return;
   }
-  if (!await claimQuota(env, "msg-user:" + user.id, 60)) return;
   if ((message.text || "").trim() === "/operator") {
     await forwardToOperator(env, user, ctx);
     return;
@@ -211,7 +210,6 @@ async function handleCallback(env, callback) {
   await telegram(env, "answerCallbackQuery", { callback_query_id: callback.id });
   const ctx = await userContext(env, callback.from);
   const copy = COPY[ctx.lang];
-  if (!await claimQuota(env, "msg-user:" + callback.from.id, 60)) return;
   if (action === "help:operator") {
     await forwardToOperator(env, callback.from, ctx);
     return;
