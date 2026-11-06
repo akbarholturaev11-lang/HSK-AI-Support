@@ -48,6 +48,16 @@ export function requiresHumanVerification(input) {
   return false;
 }
 
+
+// User feedback is a support question, not an operator ticket or proof of a
+// broken file. This classifies only UI comments; it never verifies an account.
+export function isUiFeedback(input) {
+  const s=String(input||"").toLowerCase().normalize("NFKC").slice(0,650);
+  const ui=/(?:интерфейс|дизайн|оформлен|экран|страниц|кнопк|шрифт|располож|юзабилити|\bux\b|\bui\b|layout|кўриниш|куриниш|ранг|намуд|интерфейси)/u.test(s);
+  const opinion=/(?:не\s+очень|не\s+нрав|нрав|плох|красив|удоб|неудоб|ужас|сложн|передел|улучш|лучше|отзыв|предлож|фикр|ноқулай|нокулай|қулай|кулай|чирой|ёмон|яхши|таклиф|беҳтар|бехтар|зебо|мушкил|feedback)/u.test(s);
+  return ui && opinion;
+}
+
 export function parseAiDecision(content) {
   let raw = String(content || "").trim();
   const ticks = String.fromCharCode(96).repeat(3);

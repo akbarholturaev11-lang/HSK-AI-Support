@@ -1,4 +1,4 @@
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification } from "./logic.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer } from "./ai.js";
 import { saveConversationExchange, clearConversationContext } from "./conversation.js";
@@ -255,12 +255,17 @@ async function handlePrivate(env, message) {
     }
     let image=null;
     try {image=await telegramImage(env,message);} catch {image=null;}
-    const answer=image ? await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image) : null;
+    if (!image) {
+      await sendUser(env,user.id,copy.mediaHelp);
+      return;
+    }
+    const answer=await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image);
     if(answer) {
       await sendUser(env,user.id,answer);
       return;
     }
-    await sendUser(env,user.id,copy.mediaHelp);
+    // The photo loaded. AI uncertainty must never be called a broken file.
+    await sendUser(env,user.id,isUiFeedback(caption) ? copy.uiFeedbackAck : copy.imageAnalysisUnavailable);
     return;
   }
   if (!message.text) {
@@ -291,6 +296,10 @@ async function handlePrivate(env, message) {
   const answer = await askAi(env, user.id, ctx.lang, text);
   if (answer) {
     await sendUser(env, user.id, answer);
+    return;
+  }
+  if (isUiFeedback(text)) {
+    await sendUser(env, user.id, copy.uiFeedbackAck);
     return;
   }
   // Greetings and language requests never need R2 or an operator. They also

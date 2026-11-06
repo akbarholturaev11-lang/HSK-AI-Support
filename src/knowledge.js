@@ -34,7 +34,14 @@ const TERMS = {
   general: [
     /instagram/u, /инстаграм/u, /tiktok/u, /тикток/u, /youtube/u, /ютуб/u, /ютюб/u, /соцсет/u, /ижтимоий/u, /сайт/u, /website/u,
     /\bhsk\b/u, /хск/u, /курс/u, /lesson/u, /дарс/u, /урок/u,
-    /хитой/u, /китай/u, /chinese/u, /study/u, /дост\/п/u
+    /хитой/u, /китай/u, /chinese/u, /study/u, /дост\/п/u,
+    // Visual UI/UX comments and unsolicited user feedback also belong to support.
+    /интерфейс/u, /дизайн/u, /оформлен/u, /удобн/u, /юзабилити/u,
+    /\bux\b/u, /\bui\b/u, /layout/u, /feedback/u, /отзыв/u,
+    /мулоҳиза/u, /мулохаза/u, /таклиф/u, /пешниҳод/u,
+    /кўриниш/u, /куриниш/u, /қулай/u, /кулай/u, /ноқулай/u, /нокулай/u,
+    /шрифт/u, /кнопк/u, /кнопка/u, /ранглар/u, /ранг/u, /цвет/u,
+    /экран/u, /страниц/u
   ]
 };
 
