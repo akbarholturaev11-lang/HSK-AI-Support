@@ -28,6 +28,8 @@ test("Tajik language instructions don't silently become Uzbek",()=>{
 test("automatic language inference handles explicit requests and short ambiguous follow-ups",()=>{
   assert.equal(detectReplyLanguage("ru","салом ўзбек тилида суҳбатлаша оламизми?"),"uz");
   assert.equal(detectReplyLanguage("ru","salom uzbek tilida gaplasha olamizmi?"),"uz");
+  assert.equal(detectReplyLanguage("ru","Salom, menga yordam kerak"),"uz");
+  assert.equal(detectReplyLanguage("ru","Shumo baroi HSK AI metavoned yordam dihed?"),"tj");
   assert.equal(detectReplyLanguage("ru","Салом, ўзбек тилида суҳбатлашсак бўладими?"),"uz");
   assert.equal(detectReplyLanguage("ru","Салом"),"ru","ambiguous greeting retains saved language");
   assert.equal(detectReplyLanguage("uz","Салом"),"uz","Uzbek conversation remains Uzbek");
