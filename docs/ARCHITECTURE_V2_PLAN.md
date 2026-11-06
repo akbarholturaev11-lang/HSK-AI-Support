@@ -1,7 +1,7 @@
 # HSK AI Support — V2 архитектура режаси
 
 **Сана:** 2026-11-06
-**Ҳолат:** DRAFT — архитектура муҳокамада. ChatGPT Scheduled Agent ишга қўйилди; Cloudflare R2 private bucket ва Worker KB binding тайёр; knowledge initial sync ҳали бажарилмаган. AI Gateway захира қисми ҳали муҳокамада.
+**Ҳолат:** DRAFT — архитектура муҳокамада. ChatGPT Scheduled Agent ишга қўйилди; Cloudflare R2 private bucket ва Worker KB binding тайёр; биринчи 7 бўлимли English knowledge sync бажарилган. AI Gateway захира қисми ҳали муҳокамада.
 **Қамров:** фақат HSK AI Support Bot. Асосий HSK AI Railway/PostgreSQL серверига сўров юборилмайди.
 
 ## 1. Тасдиқланган қарорлар
@@ -55,7 +55,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Агент:** ChatGPT Schedule'да `HSK AI KB Sync` фаол, ҳар 4 соатлик main SHA/diff текширув. R2 API'га бевосита ёзади. KB'да янги факт бўлмаса файл ва хабар ўзгармайди. Фақат R2 файлларининг барча upload'лари муваффақиятли ўтса `knowledge/sync_state.json` checkpoint янгиланади.
 
-**Реал ҳолат:** Cloudflare R2 фаол. `hsk-ai-support-kb` private bucket (Standard, EEUR) яратилган, `knowledge/sync_state.json` бошланғич ҳолатда ёзилган (`last_checked_sha: null`). Cloudflare Support Worker'да `KB` binding бор. Автоматик sync ҳақиқий main кодни ўқиб KB ни тўлдириши ва R2'га ёзиши ҳали биринчи цикл билан текширилади.
+**Реал ҳолат:** Cloudflare R2 фаол. `hsk-ai-support-kb` private bucket (Standard, EEUR) яратилган, `knowledge/sync_state.json` бошланғич ҳолатда ёзилган (`last_checked_sha: null`). Cloudflare Support Worker'да `KB` binding бор. Биринчи baseline main SHA `c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073` асосида 7 та English KB JSON яратилди, ҳар бири R2'га ёзилди ва қайта ўқиб текширилди. `knowledge/sync_state.json` ушбу SHA билан `synced` бўлди. Кейинги **режали** автоном цикл ҳали алоҳида тасдиқланмаган.
 
 ## 4. Қидирув — энг енгил MVP
 
@@ -84,7 +84,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Phase 2 — R2 Knowledge:** private R2 bucket ва Worker KB binding яратилди; English topic JSON'ларни агент тўлдиради, зарур D1 индекс ва Support Worker retrieval'ни кейин улаймиз. GitHub Actions pipeline талаб қилинмайди.
 
-**Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда Cloudflare R2 API орқали ёзади. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ. Агент schedule'и фаол, биринчи runtime sync ҳали тасдиқланмаган.
+**Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда Cloudflare R2 API орқали ёзади. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ. Агент schedule'и фаол; дастлабки KB синхронизацияси жорий чатда бажарилди, кейинги мустақил режали цикл ҳали текширилмаган.
 
 **Phase 4 — rollout:** CI, staging, реал RU/TJ/UZ саволлари, quota/timeout/invalid token/cost tests, операторга тўғри ўтиш, мониторинг. Production deployment фақат owner тасдиғи ва rollback варианти билан.
 
