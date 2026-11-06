@@ -39,3 +39,11 @@ test("FAQ and menu are localized", () => {
   assert.equal(explicitFaq("непонятный длинный вопрос с деталями о карте", "ru"), null);
   assert.equal(menu("ru").inline_keyboard[1][1].callback_data, "help:operator");
 });
+
+test("long robotic AI answers are rejected rather than sent", () => {
+  assert.equal(parseAiDecision(JSON.stringify({ action: "answer", answer: "а".repeat(221) })), null);
+  assert.deepEqual(
+    parseAiDecision(JSON.stringify({ action: "answer", answer: "Да, помогу! Уточните, что не работает." })),
+    { action: "answer", answer: "Да, помогу! Уточните, что не работает." }
+  );
+});
