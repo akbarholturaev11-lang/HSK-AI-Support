@@ -55,3 +55,17 @@ test("Russian and Tajik social handles are separate; URLs remain exact-allowlist
   assert.equal(isApprovedLinkResponse(OFFICIAL_LINKS.telegramNews),true);
   assert.equal(isApprovedLinkResponse("https://hskai.app/fake-checkout"),false);
 });
+
+test("verified localized marketing pages are separate from install, checkout and app",()=>{
+  assert.equal(chooseOfficialLink("Ссылка на HSK курсы","", "ru"),"https://hskai.app/ru/hsk/");
+  assert.equal(chooseOfficialLink("HSK курслари сайти","", "uz"),"https://hskai.app/uz/hsk/");
+  assert.equal(chooseOfficialLink("AI ўқитувчи саҳифасини бер","", "uz"),"https://hskai.app/uz/ai-chinese-teacher/");
+  assert.equal(chooseOfficialLink("Китайский с нуля страница","", "ru"),"https://hskai.app/ru/learn-chinese/");
+  assert.equal(chooseOfficialLink("Subscription guide page","", "ru"),"https://hskai.app/ru/guide/subscription/");
+  assert.equal(chooseOfficialLink("Google privacy ссылка","", "tj"),"https://hskai.app/privacy/google-sign-in/tj/");
+  assert.equal(chooseOfficialLink("Подписка ссылка","", "ru"),null,"cannot invent a checkout URL");
+  assert.equal(chooseOfficialLink("Бош саҳифа силкаси","", "uz"),"https://hskai.app/uz/");
+  assert.equal(isApprovedLinkResponse("https://hskai.app/uz/guide/features/"),true);
+  assert.equal(isApprovedLinkResponse("https://hskai.app/ru/ai-chinese-teacher/"),true);
+  assert.equal(isApprovedLinkResponse("https://hskai.app/ru/unverified-subscription-checkout/"),false);
+});
