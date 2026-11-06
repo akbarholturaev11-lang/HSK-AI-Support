@@ -69,8 +69,8 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 5. Мавзу қидириш ортиқча хатолар берса ёки KB катталашса, кейин D1 keyword index вариантга ўтиш мумкин. Ҳозирча D1 тикет ва лимит вазифасида қолади.
 6. Релиздан олдин test: тўлов/аккаунт/Android/PWA/Telegram мавзулари, KB R2 хато, AI fallback, 3 тил, operator Reply ва /close. Хавфсиз rollback.
 
-**Q17 — Файл танлаш усули (биринчи муҳокама):**
-- A (ТАВСИЯ): Worker'да оддий keyword→topic map, 7 та бўлимдан 1–2 файлини ўқиш. Энг содда ва арзон, ҳозирги кўламга мос.
+**Q17 — ЕЧИЛДИ: A варианти фойдаланувчи томонидан аниқ тасдиқланган.**
+- **ТАНЛАНДИ (A):** Worker'да оддий keyword→topic map, 7 та бўлимдан 1–2 файлини ўқиш. Ортиқча D1 search ва AI classifier керак эмас. Ноаниқ бўлса фойдаланувчидан қисқача аниқлаштириш ёки операторга ўтиш.
 - B: D1 index орқали keyword/tag қидириш, 1–3 файл. KB ўсса фойдали; ҳозир ортиқча мураккаблик.
 - C: AI аввал қайси файл кераклигини танлайди. Тилни тушуниши кучли, аммо қўшимча AI чақируви, латентлик ва харажат бор.
 
@@ -116,8 +116,8 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | ID | Савол | Таклиф (тасдиқланмаган) |
 |---|---|---|
 | Q4 (ЕЧИЛГАН) | Биринчи KB қамрови | 7 та бўлим R2’да яратилди: payments, subscriptions, accounts, android, pwa, telegram, general. |
-| Q17 | R2'дан қайси билим файлини топиш усули? | A (тавсия): 7 topic'га оддий keyword map, 1–2 файл. B: D1 search. C: AI classifier. |
-| Q5 | Захира провайдер ва модель қайси? | RU/TJ/UZ сифати текширилган битта арзон модель. |
+| Q17 (ЕЧИЛГАН) | R2'дан файл танлаш | **A — Worker'да keyword→topic map, максимум 1–2 English файл.** Фойдаланувчи аниқ танлади. |
+| Q5 (МУҲОКАМАДА) | Захира AI модели | **A (тавсия):** Google Gemini 2.5 Flash-Lite (`google/gemini-2.5-flash-lite`); **B:** OpenAI GPT-4.1 mini (`openai/gpt-4.1-mini`). Gateway каталогида мавжуд; тил сифати реал тестдан кейин баҳоланади. Ҳеч қандай тўлов фаоллаштирилмади. |
 | Q6 | Захира тўлови Gateway Unified Billing’ми ёки BYOK API калитими? | BYOK, агар provider hard spending limit бор бўлса; қулайликни ҳам солиштириш. |
 | Q7 | Захира учун кунлик ва ойлик максимал бюджет қанча? | Бошланғич таклиф $0.20/кун ва $3/ой. |
 | Q8 | AI сўров лимити: ҳозир 3/user ва 60/global — янги меъёр қанча? | 5/user/кун, глобал Neuron ва бюджет билан назорат. |
@@ -130,7 +130,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q15 | Янги AI провайдер учун мослик чегараси қандай? | Gateway/compatible API — config only; native incompatible API — adapter. |
 | Q16 | RU/TJ/UZ сифати ва тўлов FAQ жавобларини ким қабул қилади? | Owner 10 та real савол × 3 тил билан тасдиқлайди. |
 
-**ЕЧИЛГАН:** Q1–Q4 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** аввал Q17 (R2→AI файл танлаш), кейин Q5–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
+**ЕЧИЛГАН:** Q1–Q4, Q17 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q5 — захира AI модели, кейин Q6–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
 
 ## 9. Ҳозир бажарилмайдиган ишлар
 
