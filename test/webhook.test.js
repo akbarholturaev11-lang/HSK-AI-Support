@@ -110,3 +110,43 @@ test("without AI key, user escalation and operator reply both work", async () =>
     assert.equal(calls[2].message_id, 999);
   } finally { globalThis.fetch = original; }
 });
+
+
+test("AI shows typing before model call and sends a brief answer", async () => {
+  const { env } = stub();
+  env.AI_API_KEY = "test-only-key";
+  const calls = [];
+  let typingCalls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("api.openai.com")) {
+      assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
+      const body = JSON.parse(init.body);
+      assert.equal(body.max_tokens, 160);
+      assert.match(body.messages[0].content, /1 or 2 short sentences/);
+      return Response.json({ choices: [{ message: { content: JSON.stringify({
+        action: "answer",
+        answer: "HSK AI помогает изучать китайский язык."
+      }) } }] });
+    }
+    const method = String(url).split("/").pop();
+    calls.push({ method, body: JSON.parse(init.body) });
+    if (method === "sendChatAction") typingCalls++;
+    return Response.json({ ok: true, result: { message_id: 800 } });
+  };
+  try {
+    const user = {
+      update_id: 300,
+      message: { chat: { id: 71, type: "private" }, from: { id: 71, language_code: "ru" },
+        message_id: 3, text: "Для чего нужен HSK AI?" }
+    };
+    assert.equal((await call(env, user)).status, 200);
+    assert.equal(calls[0].method, "sendChatAction");
+    assert.equal(calls[0].body.action, "typing");
+    assert.equal(calls[0].body.chat_id, 71);
+    assert.equal(calls.at(-1).method, "sendMessage");
+    assert.equal(calls.at(-1).body.text, "HSK AI помогает изучать китайский язык.");
+    assert.equal(calls.at(-1).body.chat_id, 71);
+  } finally { globalThis.fetch = original; }
+});
+
