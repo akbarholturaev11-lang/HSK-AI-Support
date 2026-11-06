@@ -1,4 +1,4 @@
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification } from "./logic.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer } from "./ai.js";
 import { saveConversationExchange } from "./conversation.js";
@@ -254,12 +254,19 @@ async function handlePrivate(env, message) {
     }
     let image=null;
     try {image=await telegramImage(env,message);} catch {image=null;}
-    const answer=image ? await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image) : null;
+    if (!image) {
+      // Image transport failed: this is the only case called a file error.
+      await sendUser(env,user.id,copy.mediaHelp);
+      return;
+    }
+    const answer=await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image);
     if(answer) {
       await sendUser(env,user.id,answer);
       return;
     }
-    await sendUser(env,user.id,copy.mediaHelp);
+    // Image was downloaded successfully. An AI or KB refusal is NOT
+    // evidence of a broken file: respond to the user's actual feedback.
+    await sendUser(env,user.id,isUiFeedback(caption) ? copy.uiFeedbackAck : copy.imageAnalysisUnavailable);
     return;
   }
   if (!message.text) {
@@ -289,6 +296,10 @@ async function handlePrivate(env, message) {
   const answer = await askAi(env, user.id, ctx.lang, text);
   if (answer) {
     await sendUser(env, user.id, answer);
+    return;
+  }
+  if (isUiFeedback(text)) {
+    await sendUser(env, user.id, copy.uiFeedbackAck);
     return;
   }
   // Greetings and language requests never need R2 or an operator. They also
