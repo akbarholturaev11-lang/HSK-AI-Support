@@ -288,19 +288,31 @@ async function handleAdmin(env, message) {
 
 
 async function registerWebhookOnce(env) {
-  if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.DB) return;
+  if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.DB) return { status: "missing_configuration" };
   const origin = String(env.PUBLIC_WORKER_ORIGIN || "").replace(/\/+$/, "");
-  if (!/^https:\/\/[a-z0-9.-]+$/i.test(origin)) return;
+  if (!/^https:\/\/[a-z0-9.-]+$/i.test(origin)) return { status: "invalid_origin" };
   const url = origin + "/webhook";
-  // One registration per unique credentials+origin, even after a token rotation.
   const input = new TextEncoder().encode([env.BOT_TOKEN, env.WEBHOOK_SECRET, url].join(":"));
   const fingerprint = [...new Uint8Array(await crypto.subtle.digest("SHA-256", input))]
     .map((b) => b.toString(16).padStart(2, "0")).join("");
   const previous = await env.DB.prepare(
     "SELECT value FROM service_settings WHERE key='telegram_webhook_sha256'"
   ).first();
-  if (previous?.value === fingerprint) return;
+  if (previous?.value === fingerprint) return { status: "registered" };
+
+  // Registration is always for our fixed URL. Block repeated public activation attempts.
+  const now = Math.floor(Date.now() / 1000);
+  const claim = await env.DB.prepare(
+    "INSERT INTO service_settings(key,value,updated_at) VALUES('webhook_last_attempt','1',?) " +
+    "ON CONFLICT(key) DO UPDATE SET value='1',updated_at=excluded.updated_at " +
+    "WHERE updated_at <= ?"
+  ).bind(now, now - 60).run();
+  if (!Number(claim.meta?.changes || 0)) return { status: "retry_later" };
+
+  let status = "failed";
   try {
+    const me = await telegram(env, "getMe", {});
+    if (!me?.username) throw new Error("telegram_getMe_missing_username");
     const result = await telegram(env, "setWebhook", {
       url,
       secret_token: env.WEBHOOK_SECRET,
@@ -311,11 +323,21 @@ async function registerWebhookOnce(env) {
     await env.DB.prepare(
       "INSERT INTO service_settings(key,value,updated_at) VALUES('telegram_webhook_sha256',?,?) " +
       "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at"
-    ).bind(fingerprint, Math.floor(Date.now() / 1000)).run();
+    ).bind(fingerprint, now).run();
+    status = "registered";
     console.info("support_webhook_registered");
-  } catch {
-    console.warn("support_webhook_registration_unavailable");
+  } catch (error) {
+    const message = String(error?.message || "");
+    status = /^telegram_http_(401|403|404)$/.test(message) ?
+      "invalid_telegram_token" : /^telegram_http_/.test(message) ?
+      "telegram_http_error" : "registration_failed";
+    console.warn("support_webhook_registration_unavailable", status);
   }
+  await env.DB.prepare(
+    "INSERT INTO service_settings(key,value,updated_at) VALUES('webhook_status',?,?) " +
+    "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at"
+  ).bind(status, now).run();
+  return { status };
 }
 
 async function handleGroupChatId(env, message) {
@@ -354,6 +376,15 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") return ok();
+    if (request.method === "GET" && url.pathname === "/activate") {
+      try {
+        const result = await registerWebhookOnce(env);
+        return Response.json({ ...result, webhook: "/webhook", credentials_visible: false },
+          { headers: { "cache-control": "no-store" } });
+      } catch {
+        return Response.json({ status: "temporary_error" }, { status: 503 });
+      }
+    }
     if (request.method !== "POST" || url.pathname !== "/webhook") return fail(404);
     if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.DB) return fail(503);
     if (!equalSecret(env.WEBHOOK_SECRET, request.headers.get("X-Telegram-Bot-Api-Secret-Token"))) return fail(403);
