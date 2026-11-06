@@ -1,7 +1,7 @@
 # HSK AI Support — V2 архитектура режаси
 
 **Сана:** 2026-11-06
-**Ҳолат:** DRAFT — архитектура муҳокамада. ChatGPT Scheduled Agent ишга қўйилди; Cloudflare R2/sync ва AI Gateway ўзгаришлари ҳали бажарилмаган.
+**Ҳолат:** DRAFT — архитектура муҳокамада. ChatGPT Scheduled Agent ишга қўйилди; Cloudflare R2 private bucket ва Worker KB binding тайёр; knowledge initial sync ҳали бажарилмаган. AI Gateway захира қисми ҳали муҳокамада.
 **Қамров:** фақат HSK AI Support Bot. Асосий HSK AI Railway/PostgreSQL серверига сўров юборилмайди.
 
 ## 1. Тасдиқланган қарорлар
@@ -45,17 +45,17 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 - `kb/telegram.json`
 - `kb/general.json`
 
-Бир мавзуда фактлар жуда кўпайса, кейин кичик файлларга бўлинади. **Ҳозирча версия-папкалар, draft/approved workflow, мажбурий қўл тасдиғи ЙЎҚ.** GitHub commit history rollback вазифасини бажаради. R2'да фақат охирги амалий English фактлар сақланади.
+Бир мавзуда фактлар жуда кўпайса, кейин кичик файлларга бўлинади. **Ҳозирча версия-папкалар, draft/approved workflow, мажбурий қўл тасдиғи ЙЎҚ.** Rollback учун R2 ҳужжатларнинг аввалги қисқа snapshot'лари ёки GitHub'даги source history'дан қайта тиклаш қоидаси кейин алоҳида аниқланади; ҳозирги R2 оддий latest files тузилишида. R2'да фақат охирги амалий English фактлар сақланади.
 
 Ҳар JSON: `topic`, `facts` (текширилган фактлар), `source_commit`, `updated_at`. `lang` йўқ. Файлнинг ўзгариш вақти фақат ҳақиқий content ўзгарганда янгиланади. Таржима дубликати сақланмайди — AI user ёзган тилга мослашади.
 
 **Хавфсизликнинг битта зарур чегараси:** `main`'даги код ҳамма user'га аллақачон deploy қилинган дегани эмас. Агент ишончсиз, фақат режалаштирилган ёки ҳали тарқатилмаган функцияни **ҳозир фаол** деб KB'га киритмайди. Бундай ўзгаришга тегмайди, шубҳали ҳолатни қисқа ёзиб қолдиради. Бу owner approval жараёни эмас, фактни сохталаштирмаслик учун автоматик filter.
 
-**Боғланиш:** ChatGPT Scheduled Agent → GitHub Support repo'даги `knowledge/` файллар → GitHub Actions автоматик R2 sync → Support Worker файлини private R2 binding билан ўқийди. Агент R2 API билан қўлбола ишламайди, шу сабаб API upload/token ва қўл deploy қийинчиликлари камроқ. GitHub Actions R2 sync фақат тегишли JSON ўзгарганда ишлайди. Тикетлар ва бошқа маълумотлар ҳозирги D1'да қолади.
+**Боғланиш:** ChatGPT Scheduled Agent → GitHub HSK-AI-Bot/main diff → Cloudflare connector орқали private R2 bucket'га фақат ўзгарган JSON файллар. GitHub Actions ва алоҳида API token/CI pipeline керак эмас. R2'да `knowledge/sync_state.json` checkpoint сақланади. Worker private `KB` R2 binding орқали файлларни ўқий олади; маълумотли retrieval ҳали V2 кодга уланиши керак. Тикетлар D1'да қолади.
 
-**Агент:** ChatGPT Schedule'да `HSK AI KB Sync` фаол, 4 соатлик текширув. KB'да янги факт бўлмаса файл ва хабар ўзгармайди. Агент GitHub'га ёзиши мумкин; R2 sync учун алоҳида техник улаш ҳали шарт.
+**Агент:** ChatGPT Schedule'да `HSK AI KB Sync` фаол, ҳар 4 соатлик main SHA/diff текширув. R2 API'га бевосита ёзади. KB'да янги факт бўлмаса файл ва хабар ўзгармайди. Фақат R2 файлларининг барча upload'лари муваффақиятли ўтса `knowledge/sync_state.json` checkpoint янгиланади.
 
-**Маълум чеклов:** Cloudflare аккаунтда R2 ҳали enable қилинмаган (Cloudflare API: `10042: Please enable R2 through the Cloudflare Dashboard`). R2'га publish қилиш учун owner бир марта R2'ни ёқиши ва GitHub sync учун чекланган credential созланиши керак; шунгача R2'га ёзилган деб кўрсатиш мумкин эмас.
+**Реал ҳолат:** Cloudflare R2 фаол. `hsk-ai-support-kb` private bucket (Standard, EEUR) яратилган, `knowledge/sync_state.json` бошланғич ҳолатда ёзилган (`last_checked_sha: null`). Cloudflare Support Worker'да `KB` binding бор. Автоматик sync ҳақиқий main кодни ўқиб KB ни тўлдириши ва R2'га ёзиши ҳали биринчи цикл билан текширилади.
 
 ## 4. Қидирув — энг енгил MVP
 
@@ -82,9 +82,9 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Phase 1 — universal AI router:** Gateway route, модели алмаштириш, paid backup, privacy/budget, error/fallback simulation; Cloudflare free квотаси воқеий текширилади. Фақат синовдан сўнг release.
 
-**Phase 2 — R2 Knowledge:** private R2 bucket, English topic JSON, зарур D1 index ва GitHub Actions R2 sync. Support Worker 1–3 кичик файл ўқийди; GitHub тарихидан rollback.
+**Phase 2 — R2 Knowledge:** private R2 bucket ва Worker KB binding яратилди; English topic JSON'ларни агент тўлдиради, зарур D1 индекс ва Support Worker retrieval'ни кейин улаймиз. GitHub Actions pipeline талаб қилинмайди.
 
-**Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда ёзади → GitHub Actions R2'га автоматик sync. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ.
+**Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда Cloudflare R2 API орқали ёзади. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ. Агент schedule'и фаол, биринчи runtime sync ҳали тасдиқланмаган.
 
 **Phase 4 — rollout:** CI, staging, реал RU/TJ/UZ саволлари, quota/timeout/invalid token/cost tests, операторга тўғри ўтиш, мониторинг. Production deployment фақат owner тасдиғи ва rollback варианти билан.
 
@@ -116,11 +116,11 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q15 | Янги AI провайдер учун мослик чегараси қандай? | Gateway/compatible API — config only; native incompatible API — adapter. |
 | Q16 | RU/TJ/UZ сифати ва тўлов FAQ жавобларини ким қабул қилади? | Owner 10 та real савол × 3 тил билан тасдиқлайди. |
 
-**ЕЧИЛГАН:** Q1–Q3 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q4–Q16. Шу пайтгача R2/AI production ўзгаришлари қилинмайди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
+**ЕЧИЛГАН:** Q1–Q3 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q4–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
 
 ## 9. Ҳозир бажарилмайдиган ишлар
 
-R2 bucket, AI Gateway paid route, D1 migration ва Worker deployment **ҳозир қилинмайди**. Фақат ChatGPT Scheduled Agent яратилди; R2 enable ва KB→R2 sync ҳали тайёр эмас. Ҳозирги Support Bot одатдагидек ишлашда давом этади.
+**R2 bucket ва KB Worker binding аллақачон яратилди**; бу ўзи ботнинг жавоб бериш мантиғини ўзгартирмайди. AI Gateway paid route, D1 schema migration ва KB retrieval code ҳали йўқ. Ҳозирги Support Bot одатдагидек ишлашда давом этади.
 
 ## 10. Cloudflare расмий маълумотлар
 
