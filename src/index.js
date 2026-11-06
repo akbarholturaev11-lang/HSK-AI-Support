@@ -1,6 +1,6 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
-import { generateSupportAnswer } from "./ai.js";
+import { generateSupportAnswer, AI_NO_FACTS, AI_QUOTA } from "./ai.js";
 import { saveConversationExchange, clearConversationContext } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
 import { chooseOfficialLink, recentAccountTopic } from "./links.js";
@@ -228,6 +228,9 @@ async function handlePrivate(env, message) {
     await returnToBotMenu(env, user);
     await clearConversationContext(env,user.id);
     await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
+    // /start is visible to the next AI turn without being another chat message.
+    await saveConversationExchange(env,user.id,"/start",
+      "HSK AI support menu displayed: payment, account, technical issue, operator.");
     return;
   }
   if (message.text === "/help") {
@@ -264,7 +267,15 @@ async function handlePrivate(env, message) {
       return;
     }
     const answer=await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image);
-    if(answer) {
+    if(answer===AI_NO_FACTS) {
+      await sendUser(env,user.id,copy.noKnowledge);
+      return;
+    }
+    if(answer===AI_QUOTA) {
+      await sendUser(env,user.id,copy.limit);
+      return;
+    }
+    if(typeof answer==="string" && answer) {
       await sendUser(env,user.id,answer);
       return;
     }
@@ -288,9 +299,8 @@ async function handlePrivate(env, message) {
     // Keep account/login topic for the next one-word platform reply.
     // Existing short-lived D1 memory is reused; no new table or external call.
     await clearConversationContext(env,user.id);
-    if (faq === copy.account) {
-      await saveConversationExchange(env,user.id,text,faq);
-    }
+    await saveConversationExchange(env,user.id,
+      "FAQ selected by user: "+text, "Support FAQ topic: "+faq);
     return;
   }
   if (shouldAvoidAi(text)) {
@@ -310,7 +320,15 @@ async function handlePrivate(env, message) {
     }
   }
   const answer = await askAi(env, user.id, ctx.lang, text);
-  if (answer) {
+  if (answer===AI_NO_FACTS) {
+    await sendUser(env,user.id,copy.noKnowledge);
+    return;
+  }
+  if (answer===AI_QUOTA) {
+    await sendUser(env,user.id,copy.limit);
+    return;
+  }
+  if (typeof answer==="string" && answer) {
     await sendUser(env, user.id, answer);
     return;
   }
@@ -327,7 +345,7 @@ async function handlePrivate(env, message) {
   }
   // Missing R2 knowledge, AI budget or model uncertainty is not consent
   // to open an operator ticket.
-  await sendUser(env, user.id, copy.clarification);
+  await sendUser(env, user.id, copy.unavailable);
 }
 
 async function handleCallback(env, callback) {
@@ -343,12 +361,11 @@ async function handleCallback(env, callback) {
     return;
   }
   const key = action.slice(5);
-  await sendUser(env, callback.from.id, copy[key]);
   await clearConversationContext(env,callback.from.id);
-  if (key === "account") {
-    await saveConversationExchange(env, callback.from.id,
-      "Аккаунт ва кириш / Account login", copy.account);
-  }
+  // The FAQ click is context for AI, not a new canned Telegram message.
+  await saveConversationExchange(env,callback.from.id,
+    "FAQ selected: "+key, "Support topic: "+copy[key]);
+
 }
 
 async function handleAdmin(env, message) {
