@@ -35,6 +35,19 @@ export function shouldAvoidAi(text) {
   return /(?:\b(?:cvv|cvc|password|otp|pin|sms.?code)\b|парол|код подтвержден|код тасди|рамзи|пароли|номер карты|рақами корт|карта рақами|(?:\d[\s-]?){12,19})/i.test(String(text || ""));
 }
 
+// Individual payment/account checks must be handled by a human.
+// Keep this before FAQ and AI calls: prompts alone cannot guarantee safe routing.
+export function requiresHumanVerification(input) {
+  const t=String(input||"").toLowerCase().normalize("NFKC").slice(0,1600);
+  const payment=/платёж|платеж|оплат|чек|receipt|пардохт|тўлов|тулов|пул еч|списан|снял|refund|возврат|баргардон|қайтар/u.test(t);
+  const account=/аккаунт|account|подписк|обуна|обун|ҳисоб|логин|вход|ворид|кириш|app login|pwa_auth/u.test(t);
+  const individual=/мой|моё|моя|моей|мою|менинг|мени|менга|мен|ман|шахси|мой чек|чеки ман|чеким|аккаунтим|аккаунти ман|обунам|my |mine|i paid|у меня|менда|маро/u.test(t);
+  const verify=/тасдиқ|подтвержд|проверь|провер|санҷ|текшир|статус|проверка|approved|success|платёж не|оплата не|не пришл|не актив|списал|не работает|не открыв|ошиб|хато|намекунад|кушода намешавад|очилмаяпти|ишламаяпти|қайтар|вернуть|refund/u.test(t);
+  if(payment && individual && (verify || /чек|receipt|чеки/u.test(t))) return true;
+  if(account && individual && verify) return true;
+  return false;
+}
+
 export function parseAiDecision(content) {
   let raw = String(content || "").trim();
   const ticks = String.fromCharCode(96).repeat(3);
