@@ -36,3 +36,16 @@ test("R2 KB fails closed for malformed or unavailable data", async () => {
   assert.equal((await lookupKnowledge({KB:{ get:async()=>({json:async()=>({topic:"accounts",facts:["abc"],source_commit:sha})})}}, "платеж")).status,"unavailable");
   assert.equal(validateKnowledgeRecord({topic:"payments",source_commit:"invalid",facts:["okay"]}, "payments"),null);
 });
+
+test("photo caption about visual UI feedback selects general verified facts",async()=>{
+  assert.deepEqual(selectKnowledgeTopics("интерфейс не очень хороший"),["general"]);
+  assert.deepEqual(selectKnowledgeTopics("Дизайн и размер шрифта неудобные"),["general"]);
+  assert.deepEqual(selectKnowledgeTopics("Интерфейс жуда ноқулай"),["general"]);
+  assert.deepEqual(selectKnowledgeTopics("интерфейс и оплата"),["payments"],"specific payment facts take precedence");
+  assert.deepEqual(selectKnowledgeTopics("интерфейс и тариф"),["subscriptions"],"specific subscriptions take precedence");
+  const v=await lookupKnowledge({KB:{get:async key=>({json:async()=>({
+    topic:key.slice(10,-5),source_commit:sha,facts:["Verified general info"]
+  })})}},"интерфейс не очень хороший");
+  assert.equal(v.status,"ok");
+  assert.deepEqual(v.topics,["general"]);
+});
