@@ -184,14 +184,38 @@ async function askAi(env, userId, lang, input, imageDataUrl = null) {
   }
 }
 
+async function returnToBotMenu(env, user) {
+  // Explicit /start exits the old operator conversation so new questions
+  // return to FAQ/AI rather than silently forwarding everything to admin.
+  const ticket = await activeTicket(env, user.id);
+  if (!ticket) return;
+  const result = await env.DB.prepare(
+    "UPDATE tickets SET status='closed',updated_at=? WHERE id=? AND status='open'"
+  ).bind(Math.floor(Date.now()/1000), ticket.id).run();
+  if (!Number(result.meta?.changes || 0) || !env.ADMIN_CHAT_ID) return;
+  const name = /^[A-Za-z0-9_]{3,32}$/.test(String(user.username || "")) ?
+    "@" + user.username : limitText(user.first_name || "User", 60);
+  try {
+    await telegram(env,"sendMessage",{
+      chat_id:env.ADMIN_CHAT_ID,
+      text:"↩️ " + name + " вернулся к боту. Обращение закрыто."
+    });
+  } catch { console.warn("support_operator_exit_notice_failed"); }
+}
+
 async function handlePrivate(env, message) {
   const user = message.from;
   if (!user || user.is_bot || message.chat?.id !== user.id) return;
   const start = parseStartCommand(message.text || "");
   const ctx = await userContext(env, user, start);
-  const copy = COPY[ctx.lang];
-  if (start !== null || message.text === "/help") {
+  const copy = COPY[ctx.lang] || COPY.ru;
+  if (start !== null) {
+    await returnToBotMenu(env, user);
     await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
+    return;
+  }
+  if (message.text === "/help") {
+    await sendUser(env, user.id, copy.help);
     return;
   }
   if (!await claimQuota(env, "msg-user:" + user.id, 60)) return;
@@ -207,49 +231,53 @@ async function handlePrivate(env, message) {
   if (!message.text && (message.photo?.length || message.document)) {
     const caption=limitText(message.caption || "",1300);
     // Keep sensitive payment proofs and credential photos within human support.
-    if (shouldAvoidAi(caption) || requiresHumanVerification(caption) || /чек|receipt|bank\s*card|карта\s*банк|платёжн(?:ый|ая)\s*документ/iu.test(caption)) {
-      await forwardToOperator(env,user,ctx,message);
+    // Sensitive receipts and personal account status require human consent;
+    // never automatically send these files to the operator.
+    if (shouldAvoidAi(caption) || /чек|receipt|bank\\s*card|карта\\s*банк|платёжн(?:ый|ая)\\s*документ/iu.test(caption)) {
+      await sendUser(env,user.id,copy.sensitive);
+      return;
+    }
+    if (requiresHumanVerification(caption)) {
+      await sendUser(env,user.id,copy.accountCheck);
       return;
     }
     let image=null;
     try {image=await telegramImage(env,message);} catch {image=null;}
     const answer=image ? await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image) : null;
     if(answer) {
-      await sendUser(env,user.id,answer,{inline_keyboard:[[{
-        text:copy.buttons[3],callback_data:"help:operator"
-      }]]});
+      await sendUser(env,user.id,answer);
       return;
     }
-    await forwardToOperator(env,user,ctx,message);
+    await sendUser(env,user.id,copy.mediaHelp);
     return;
   }
   if (!message.text) {
-    await forwardToOperator(env,user,ctx,message);
+    await sendUser(env,user.id,copy.mediaHelp);
     return;
   }
   const text = limitText(message.text, 1300);
   if (!text) return;
   if (requiresHumanVerification(text)) {
-    await forwardToOperator(env,user,ctx,message);
+    await sendUser(env,user.id,copy.accountCheck);
     return;
   }
   const faq = explicitFaq(text, ctx.lang);
   if (faq) {
-    await sendUser(env, user.id, faq, menu(ctx.lang));
+    await sendUser(env, user.id, faq);
     return;
   }
   if (shouldAvoidAi(text)) {
-    await forwardToOperator(env, user, ctx, message);
+    await sendUser(env, user.id, copy.sensitive);
     return;
   }
   const answer = await askAi(env, user.id, ctx.lang, text);
   if (answer) {
-    await sendUser(env, user.id, answer, {
-      inline_keyboard: [[{ text: copy.buttons[3], callback_data: "help:operator" }]]
-    });
+    await sendUser(env, user.id, answer);
     return;
   }
-  await forwardToOperator(env, user, ctx, message);
+  // Missing R2 knowledge, AI budget or model uncertainty is not user consent
+  // to open an operator ticket. Ask for clarification or explicit /operator.
+  await sendUser(env, user.id, copy.clarification);
 }
 
 async function handleCallback(env, callback) {
@@ -265,7 +293,7 @@ async function handleCallback(env, callback) {
     return;
   }
   const key = action.slice(5);
-  await sendUser(env, callback.from.id, copy[key], menu(ctx.lang));
+  await sendUser(env, callback.from.id, copy[key]);
 }
 
 async function handleAdmin(env, message) {
