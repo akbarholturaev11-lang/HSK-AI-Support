@@ -15,6 +15,22 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 - The active ChatGPT task **HSK AI KB Sync** is scheduled every four hours, checks changes in GitHub `main`, and is configured to update **only changed** English R2 topic files directly through Cloudflare. The first *future scheduled* run has not yet been independently verified.
 - No GitHub Actions upload workflow and no separate S3 credentials are required for this connector-based path. The currently configured GitHub Actions workflow runs code tests only.
 
+## V2 staging branch — not deployed
+
+This branch implements the V2 code path; **the currently deployed Worker and main branch are unchanged**.
+
+- `src/knowledge.js`: keyword routing to at most two validated R2 English topic records. If a production R2 record is missing or malformed, fail closed and send a human support ticket; without the binding, historical local-test fallback facts remain for compatibility.
+- `src/ai.js`: R2-grounded short answers, language adaptation, native Gemma 4, and optional MiniMax M3.1 Flash backup on technical primary failure. Backup is **OFF by default** (`BACKUP_ENABLED` must explicitly be `true`). A model handoff/uncertain answer never triggers paid retries.
+- `src/index.js`: photo/screenshot processing for Telegram photo or image document and existing `copyMessage` handoff. Unreadable/large/sensitive-caption images go directly to an operator. Vision payload formatting must be verified against actual provider endpoints in staging.
+- `src/conversation.js` and `schema.sql`: last five redacted dialog messages from the preceding hour; cron prunes older context at five-minute intervals. New D1 table is **not deployed**. Queries fail safely if migration is not yet applied.
+- 20 AI questions per user per day; static FAQ and human operator chat do not count. Existing production quota remains unchanged until deployment.
+- Budget **intent**: 20 fallback calls/day and 300/month as a conservative provisional estimate, **not** a verified hard USD cap. Before enabling paid MiniMax, enforce and independently test Cloudflare Unified Billing spend controls ($0.20/day and $3/month), disable auto top-up, and review telemetry.
+- GitHub CI tests include 30 RU/TJ/UZ keyword-routing examples and mocked media/provider fallback cases. Real provider image parsing and language answer quality still require staging tests; mock tests do not prove production compatibility.
+- The scheduled `HSK AI KB Sync` automation prompt now says to back up the active topic before replacement and to apply `main` user-facing changes without waiting for a deployment. An independent successful scheduled run under these revised rules remains unverified.
+- Security blocker: production `BOT_TOKEN` is currently stored as a Cloudflare `plain_text` binding. Migrate it to `secret_text` without exposing the value and verify webhook health **before V2 production release**.
+
+**Release sequence:** independently test the agent and R2 backup; apply D1 schema migration; verify vision format, quota, fallback and 30 multilingual real responses; fix any failure; only then seek authorization for paid billing and production deployment. A GitHub merge alone does not deploy this Worker.
+
 ## Features
 
 - RU/TJ/UZ language and source detection from Telegram deep links; Telegram-language fallback.
