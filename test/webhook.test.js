@@ -658,7 +658,7 @@ test("buttons render only on /start, never on FAQ, topic callback, AI, or safe f
     for(const item of userMessages.slice(1)){
       assert.equal(item.payload.reply_markup,undefined,"only /start may include menu buttons");
     }
-    assert.ok(userMessages.some(c=>/\\/operator/.test(c.payload.text)));
+    assert.ok(userMessages.some(c=>/\/operator/.test(c.payload.text)));
     assert.equal(tickets.size,0,"FAQ/AI/fallback/personal payment must not create tickets");
     assert.ok(!calls.some(c=>c.method==="sendMessage"&&c.payload.chat_id==="-100234"));
   } finally {globalThis.fetch=original;}
