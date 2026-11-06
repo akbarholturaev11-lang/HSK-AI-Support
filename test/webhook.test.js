@@ -396,7 +396,7 @@ test("V2 image screenshot is sent to Vision with R2 facts, not saved in knowledg
 });
 
 test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
-  const {env}=stub();const calls=[];
+  const {env,quotas}=stub();const calls=[];
   let aiCalls=0;
   env.KB={get:async()=>null};
   env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
@@ -410,6 +410,7 @@ test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
       message_id:9902,text:"Не могу войти в аккаунт"}};
     assert.equal((await call(env,update)).status,200);
     assert.equal(aiCalls,0);
+    assert.equal(quotas.size,1,"only the user message rate limit is charged, not AI quota");
     assert.ok(calls.some(x=>x.data.chat_id==="-100234"&&x.method==="sendMessage"));
   }finally{globalThis.fetch=orig;}
 });
