@@ -297,3 +297,33 @@ test("one-tap activate is idempotent and never returns token", async () => {
   }
 });
 
+
+test("FAQ and AI work before operator group exists; handoff explains unavailability", async () => {
+  const { env } = stub();
+  delete env.ADMIN_CHAT_ID;
+  env.AI = { run: async () => ({ choices: [{ message: { content: JSON.stringify({
+    action: "answer", answer: "HSK AI помогает изучать китайский язык."
+  }) } }] }) };
+  env.AI_MODEL = "@cf/google/gemma-4-26b-a4b-it";
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const method = String(url).split("/").pop();
+    calls.push({ method, data: JSON.parse(init.body) });
+    return Response.json({ ok: true, result: { message_id: 901 } });
+  };
+  try {
+    const message = (update_id, text) => ({
+      update_id,
+      message: { chat: { id: 99, type: "private" },
+        from: { id: 99, language_code: "ru" }, message_id: update_id, text }
+    });
+    assert.equal((await call(env, message(701,"подписка"))).status,200);
+    assert.match(calls.at(-1).data.text,/Оплата и подписка/);
+    assert.equal((await call(env, message(702,"Что такое HSK AI?"))).status,200);
+    assert.match(calls.at(-1).data.text,/HSK AI помогает/);
+    assert.equal((await call(env, message(703,"/operator"))).status,200);
+    assert.match(calls.at(-1).data.text,/Оператор пока недоступен/);
+    assert.ok(!calls.some(c=>c.data.chat_id===undefined && c.method==="sendMessage"));
+  } finally { globalThis.fetch = original; }
+});
