@@ -280,7 +280,11 @@ test("one-tap activate is idempotent and never returns token", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async (url) => Response.json({
     ok:true,
-    result: String(url).endsWith("/getMe") ? { username:"hskai_support_bot" } : true
+    result: String(url).endsWith("/getMe") ? { username:"hskai_support_bot" } :
+      String(url).endsWith("/getWebhookInfo") ? {
+        url:"https://hsk-ai-support.hskaiiapp.workers.dev/webhook",
+        pending_update_count:0
+      } : true
   });
   try {
     const req = new Request("https://support.example/activate");
