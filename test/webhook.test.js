@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 
 function stub() {
-  const calls = [], processed = new Set(), users = new Map(), tickets = new Map(), links = new Map(), quotas = new Map();
+  const calls = [], processed = new Set(), users = new Map(), tickets = new Map(), links = new Map(), quotas = new Map(), settings = new Map();
   let nextTicket = 1;
   const DB = { prepare(sql) { return { bind(...args) { return {
     async run() {
+      if (sql.startsWith("INSERT INTO service_settings")) {
+        settings.set("telegram_webhook_sha256", args[0]);
+        return { meta:{ changes:1 } };
+      }
       if (sql.startsWith("INSERT OR IGNORE INTO processed_updates")) {
         if (processed.has(args[0])) return { meta: { changes: 0 } };
         processed.add(args[0]); return { meta: { changes: 1 } };
@@ -39,6 +43,10 @@ function stub() {
       return { meta: { changes: 1 } };
     },
     async first() {
+      if (sql.startsWith("SELECT value FROM service_settings")) {
+        const value = settings.get("telegram_webhook_sha256");
+        return value ? { value } : null;
+      }
       if (sql.startsWith("SELECT lang,source FROM support_users")) return users.get(args[0]) || null;
       if (sql.startsWith("SELECT id,tg_id,lang,source FROM tickets"))
         return [...tickets.values()].find(t => t.tg_id === args[0] && t.status === "open") || null;
@@ -51,7 +59,7 @@ function stub() {
   }; } }; } };
   return {
     env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake" },
-    calls, users, tickets, links
+    calls, users, tickets, links, settings
   };
 }
 
@@ -185,6 +193,33 @@ test("Cloudflare Workers AI binding answers briefly, without external AI API key
     assert.equal(aiCalls[0].model, "@cf/zai-org/glm-4.7-flash");
     assert.ok(calls.some(x => x.method === "sendMessage" && x.body.text === "HSK AI помогает учить китайский язык."));
     assert.equal(calls.filter(x=>x.method==="sendMessage").length, 1);
+  } finally { globalThis.fetch = original; }
+});
+
+
+test("Cron registers webhook once using secret without exposing it", async () => {
+  const { env, settings } = stub();
+  env.PUBLIC_WORKER_ORIGIN = "https://hsk-ai-support.hskaiiapp.workers.dev";
+  const called = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const method = String(url).split("/").pop();
+    const data = JSON.parse(init.body);
+    called.push({ method, data });
+    return Response.json({ ok:true, result:true });
+  };
+  try {
+    await worker.scheduled({cron:"*/5 * * * *"}, env);
+    assert.equal(called.length, 1);
+    assert.equal(called[0].method, "setWebhook");
+    assert.equal(called[0].data.secret_token, "secret");
+    assert.equal(called[0].data.url, env.PUBLIC_WORKER_ORIGIN + "/webhook");
+    assert.equal(settings.size, 1);
+    await worker.scheduled({cron:"*/5 * * * *"}, env);
+    assert.equal(called.length, 1, "repeated cron must not call Telegram again");
+    env.WEBHOOK_SECRET = "secret-rotated";
+    await worker.scheduled({cron:"*/5 * * * *"}, env);
+    assert.equal(called.length, 2, "rotating secret should register webhook again");
   } finally { globalThis.fetch = original; }
 });
 
