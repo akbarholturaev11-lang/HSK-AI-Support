@@ -355,3 +355,109 @@ test("ticket with no Telegram username retains user ID and safe fallback", async
     assert.match(calls[0].text, /ID: <code>108<\/code>/);
   } finally { globalThis.fetch = previous; }
 });
+
+
+test("V2 image screenshot is sent to Vision with R2 facts, not saved in knowledge", async () => {
+  const {env}=stub();
+  const baseSha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  const objects=[];
+  env.KB={get:async key=>{
+    objects.push(key);
+    return {json:async()=>({topic:"general",source_commit:baseSha,facts:["HSK AI teaches Chinese."]})};
+  }};
+  const aiRequests=[];
+  env.AI={run:async(model,request)=>{
+    aiRequests.push({model,request});
+    return {response:JSON.stringify({action:"answer",answer:"Проверьте настройки приложения."})};
+  }};
+  const calls=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();
+    if(method==="getFile")return Response.json({ok:true,result:{file_path:"photos/test.jpg",file_size:6}});
+    if(String(url).includes("/file/bot")){
+      return new Response(Uint8Array.from([255,216,255,1,2,3]),{headers:{"content-type":"image/jpeg"}});
+    }
+    calls.push({method,body:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:121}});
+  };
+  try{
+    const update={update_id:9901,message:{chat:{id:991,type:"private"},
+      from:{id:991,language_code:"ru"},message_id:9901,
+      photo:[{file_id:"f1",file_size:6}]}};
+    assert.equal((await call(env,update)).status,200);
+    assert.deepEqual(objects,["knowledge/general.json"]);
+    assert.equal(aiRequests.length,1);
+    assert.ok(aiRequests[0].request.image.startsWith("data:image/jpeg;base64,"));
+    assert.match(aiRequests[0].request.messages[0].content,/HSK AI teaches Chinese/);
+    assert.ok(calls.some(c=>c.method==="sendMessage"&&c.body.text==="Проверьте настройки приложения."));
+    assert.ok(!calls.some(c=>c.method==="copyMessage"));
+  } finally {globalThis.fetch=original;}
+});
+
+test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
+  const {env}=stub();const calls=[];
+  let aiCalls=0;
+  env.KB={get:async()=>null};
+  env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
+  const orig=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:calls.length+500}});
+  };
+  try{
+    const update={update_id:9902,message:{chat:{id:992,type:"private"},from:{id:992,language_code:"ru"},
+      message_id:9902,text:"Не могу войти в аккаунт"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(aiCalls,0);
+    assert.ok(calls.some(x=>x.data.chat_id==="-100234"&&x.method==="sendMessage"));
+  }finally{globalThis.fetch=orig;}
+});
+
+test("V2 technical primary failure attempts configured MiniMax and then answers",async()=>{
+  const {env}=stub();
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["Chinese lessons are available."]})})};
+  env.BACKUP_ENABLED="true";
+  let calls=0;
+  env.AI={run:async(model)=>{
+    calls++;
+    if(model.startsWith("@cf/")) throw new Error("exhausted");
+    assert.equal(model,"minimax/m3.1-flash");
+    return {choices:[{message:{content:JSON.stringify({action:"answer",answer:"Откройте раздел курса."})}}]};
+  }};
+  const tg=[];
+  const orig=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    tg.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:1001}});
+  };
+  try{
+    const update={update_id:9903,message:{chat:{id:993,type:"private"},from:{id:993,language_code:"ru"},
+      message_id:9903,text:"Что такое HSK AI?"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(calls,2);
+    assert.ok(tg.some(x=>x.data.text==="Откройте раздел курса."));
+  }finally{globalThis.fetch=orig;}
+});
+
+test("V2 payment proof image bypasses AI and reaches human operator",async()=>{
+  const {env}=stub();
+  let aiCalls=0;
+  env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
+  const tg=[];
+  const orig=globalThis.fetch;
+  let nextId=1500;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();
+    tg.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:nextId++}});
+  };
+  try{
+    const update={update_id:9904,message:{chat:{id:994,type:"private"},from:{id:994,language_code:"ru"},
+      message_id:9904,caption:"Вот чек оплаты",photo:[{file_id:"photo",file_size:100}]}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(aiCalls,0);
+    assert.ok(tg.some(x=>x.method==="copyMessage"&&x.data.message_id===9904));
+  }finally{globalThis.fetch=orig;}
+});
