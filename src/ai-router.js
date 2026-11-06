@@ -9,6 +9,14 @@ const BACKUP_MONTHLY_CENT_RESERVATIONS = 300; // $3.00/month
 // Reserve a conservative cent per backup call, not a provider-reported exact cost.
 // Gateway/provider spend limits must ALSO be configured; a reservation is not a billing hard cap.
 
+function withTimeout(promise, timeoutMs) {
+  let timer;
+  const fail = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("ai_model_timeout")), timeoutMs);
+  });
+  return Promise.race([promise, fail]).finally(() => clearTimeout(timer));
+}
+
 function modelText(result) {
   const raw = result?.response ?? result?.result?.response ??
     result?.choices?.[0]?.message?.content ?? null;
@@ -69,10 +77,10 @@ export async function answerWithAi(env, lang, question, history, knowledge) {
   const messages = modelMessages(lang, question, history, knowledge.facts);
   const gateway = { gateway: { id: env.AI_GATEWAY_ID || "default", skipCache: true } };
   try {
-    const result = await env.AI.run(env.AI_MODEL || PRIMARY_MODEL, {
+    const result = await withTimeout(env.AI.run(env.AI_MODEL || PRIMARY_MODEL, {
       messages, max_tokens: 160, temperature: 0.1,
       chat_template_kwargs: { enable_thinking: false }
-    }, gateway);
+    }, gateway), 6000);
     const decision = parseAiDecision(modelText(result));
     if (decision?.action === "answer") return decision.answer;
     if (decision?.action === "handoff") return null; // Model explicitly requests an operator.
@@ -84,9 +92,9 @@ export async function answerWithAi(env, lang, question, history, knowledge) {
   // A rejected/invalid primary call is the ONLY trigger. No speculative paid calls.
   if (!backupEnabled(env) || !await reserveBackupBudget(env)) return null;
   try {
-    const result = await env.AI.run(env.MINIMAX_MODEL || BACKUP_MODEL, {
+    const result = await withTimeout(env.AI.run(env.MINIMAX_MODEL || BACKUP_MODEL, {
       messages, max_completion_tokens: 512, reasoning_effort: "low", temperature: 0.1
-    }, gateway);
+    }, gateway), 6000);
     const decision = parseAiDecision(modelText(result));
     return decision?.action === "answer" ? decision.answer : null;
   } catch {
