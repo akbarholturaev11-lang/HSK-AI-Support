@@ -22,6 +22,28 @@ function faqUrl(lang) {
   return "https://hskai.app/"+l+"/guide/faq/";
 }
 
+// Public marketing routes from HSK-AI-Bot/app/public_site/content.py PAGE_TRANSLATIONS.
+// These are information pages, not app installers, payment pages or Mini App deep links.
+export const SITE_PAGES=Object.freeze({
+  localizedHome:{ru:"https://hskai.app/ru/",tj:"https://hskai.app/tj/",uz:"https://hskai.app/uz/"},
+  hsk:{ru:"https://hskai.app/ru/hsk/",tj:"https://hskai.app/tj/hsk/",uz:"https://hskai.app/uz/hsk/"},
+  learnChinese:{ru:"https://hskai.app/ru/learn-chinese/",tj:"https://hskai.app/tj/learn-chinese/",uz:"https://hskai.app/uz/learn-chinese/"},
+  aiTeacher:{ru:"https://hskai.app/ru/ai-chinese-teacher/",tj:"https://hskai.app/tj/ai-chinese-teacher/",uz:"https://hskai.app/uz/ai-chinese-teacher/"},
+  guide:{ru:"https://hskai.app/ru/guide/",tj:"https://hskai.app/tj/guide/",uz:"https://hskai.app/uz/guide/"},
+  guideFeatures:{ru:"https://hskai.app/ru/guide/features/",tj:"https://hskai.app/tj/guide/features/",uz:"https://hskai.app/uz/guide/features/"},
+  guideSubscription:{ru:"https://hskai.app/ru/guide/subscription/",tj:"https://hskai.app/tj/guide/subscription/",uz:"https://hskai.app/uz/guide/subscription/"}
+});
+
+export const GOOGLE_SIGNIN_PRIVACY=Object.freeze({
+  uz:"https://hskai.app/privacy/google-sign-in/",
+  ru:"https://hskai.app/privacy/google-sign-in/ru/",
+  tj:"https://hskai.app/privacy/google-sign-in/tj/"
+});
+
+function sitePage(kind,lang) {
+  return SITE_PAGES[kind][["ru","tj","uz"].includes(lang)?lang:"ru"];
+}
+
 const linkRequest=/(?:силка|ссылк|ҳавола|хавола|линк|link|url|манзил|адрес|юбор|отправ|ташлаб|бериб|скин)/u;
 const iphone=/(?:iphone|айфон|\bios\b|\bpwa\b)/u;
 const install=/(?:скача|download|юклаб|установ|ўрнат|урнат|орнат|o.rnat|install|очиш|откр|қаер|каер|qayer|where|куда)/u;
@@ -56,6 +78,31 @@ export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
       (wantsLink && wasTg && /(?:бот|bot|ўқиш|дарс|учеб|learn)/u.test(previous)))
     return OFFICIAL_LINKS.telegram;
 
+  // Narrow public marketing requests before the generic FAQ rule.
+  const pageRequest=wantsLink || /(?:страниц|саҳифа|сахифа|сайт|website|где почитать|куда зайти)/u.test(q);
+  const pageContext=pageRequest && wantsLink ? (q+" "+previous) : q;
+  if (pageRequest) {
+    if (/(?:google|гугл)/u.test(pageContext) &&
+        /(?:privacy|конфиденц|махфий|сиррият|шахсий маълумот)/u.test(pageContext))
+      return GOOGLE_SIGNIN_PRIVACY[["ru","tj","uz"].includes(lang)?lang:"ru"];
+    if (/(?:подпис|обуна|обун|тариф|subscription|пардохт|тўлов|тулов)/u.test(pageContext) &&
+        /(?:guide|руководств|инструкц|қўлланма|йўриқ|страниц|саҳифа|сахифа)/u.test(pageContext))
+      return sitePage("guideSubscription",lang);
+    if (/(?:функц|имконият|хусусият|features)/u.test(pageContext) &&
+        /(?:guide|руководств|инструкц|қўлланма|йўриқ)/u.test(pageContext))
+      return sitePage("guideFeatures",lang);
+    if (/(?:ai teacher|ai ўқитувч|ai укитувч|аи ўқитувч|ai преподавател|ai муаллим|ai-чinese|ai-chinese)/u.test(pageContext))
+      return sitePage("aiTeacher",lang);
+    if (/(?:хитой тилини ўрган|хитой тилини урган|китайск.*с нуля|learn chinese|beginner chinese)/u.test(pageContext))
+      return sitePage("learnChinese",lang);
+    if (/(?:\bhsk\b|\bхск\b)/u.test(pageContext) && /(?:курс|course|сайт|website|страниц|саҳифа|сахифа)/u.test(pageContext))
+      return sitePage("hsk",lang);
+    if (/(?:қўлланма асосий|йўриқнома асосий|главн.*руководств|guide home|guide index)/u.test(pageContext))
+      return sitePage("guide",lang);
+    if (/(?:главн.*сайт|бош саҳифа|асосий саҳифа|сайтнинг бош|site home)/u.test(pageContext))
+      return sitePage("localizedHome",lang);
+  }
+
   if (/(?:йўриқнома|йурикнома|қўлланма|инструкц|руководств|guide|faq)/u.test(q) ||
       wantsLink && /(?:guide|faq|йўриқнома|инструкц)/u.test(previous))
     return faqUrl(lang);
@@ -82,7 +129,7 @@ export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
 
 export function isApprovedLinkResponse(answer) {
   const urls=String(answer||"").match(/https?:\/\/[^\s<>"']+/giu)||[];
-  const allow=new Set([...Object.values(OFFICIAL_LINKS),...["ru","tj","uz"].map(faqUrl)]);
+  const allow=new Set([...Object.values(OFFICIAL_LINKS),...["ru","tj","uz"].map(faqUrl),...Object.values(SITE_PAGES).flatMap(Object.values),...Object.values(GOOGLE_SIGNIN_PRIVACY)]);
   // Allow an ordinary optional trailing slash; no arbitrary paths or query parameters.
   for(const u of [...allow])allow.add(u.endsWith("/")?u.slice(0,-1):u+"/");
   return urls.every(u=>allow.has(u.replace(/[).,;!?]+$/u,"")));
