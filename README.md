@@ -38,7 +38,7 @@ V2 code was merged as [PR #2](https://github.com/akbarholturaev11-lang/HSK-AI-Su
 - Native Telegram typing indicator during AI processing.
 - Live pre-V2 Worker currently limits AI to 3/user/day and 60 globally/day; V2 source uses 20/user/day. This changes only after deployment.
 - Private operator Telegram group: reply to a ticket message to answer the user; reply /close to close it.
-- V2: photos are read by Vision when safe; otherwise copied to an operator without storing raw media. Operator tickets use one compact HTML card (`@nick`, language, `/close`, blockquoted request); subsequent user messages and operator replies are copied directly, without bot status chatter.
+- V2: photos are read by Vision when safe; otherwise copied to an operator without storing raw media. Operator tickets use one compact HTML card (`@nick`, language, `/close`, blockquoted request); users get one opening notice and one closing notice; during active conversation, follow-up user messages and operator replies are copied directly with **no additional delivery acknowledgements**.
 - D1 stores only Telegram IDs, source, language, ticket status, and reply mappings; no message bodies.
 - Daily metadata cleanup and idempotent Telegram webhook setup.
 
