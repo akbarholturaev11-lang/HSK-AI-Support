@@ -4,7 +4,7 @@ This is an **operational checklist**, not authorization to deploy or enable a pa
 
 ## Completed
 
-- [x] **Operator conversation cleanup merged:** [PR #3](https://github.com/akbarholturaev11-lang/HSK-AI-Support/pull/3), commit `964be3f9c2ef72ad59bf7517a10428fdf34ccf34`. One short card: nickname + language + `/close` + blockquoted user request. Later messages copied directly; bot does not send automated opened/active/closed acknowledgements. Tests 65/65 and main CI green. **Not yet in deployed Cloudflare Worker.**
+- [x] **Operator conversation cleanup merged:** [PR #3](https://github.com/akbarholturaev11-lang/HSK-AI-Support/pull/3), commit `964be3f9c2ef72ad59bf7517a10428fdf34ccf34`. One short card: nickname + language + `/close` + blockquoted user request. PR #4 (commit `5464c636a1c15dfe7091066cc7c574b6f0105902`) restored **only** user opening and closing notices. Follow-up user messages are copied to admin silently, and operator replies are delivered directly. Test coverage updated and GitHub CI green. **Not yet in deployed Cloudflare Worker.**
 - [x] **AI Gateway spend limits verified:** `hsk-ai-support` has active model-specific `$0.20/24h` and `$3/30d` cost rules for `minimax/m3.1-flash`; automatic top-up OFF. Updated code uses `AI.run('minimax/m3.1-flash', ..., {gateway:{id:'hsk-ai-support'}})` instead of invalid dynamic route. These are eventually-consistent spend limits, not absolute guaranteed caps. Credits are still `$0`, so backup remains OFF until funding and paid smoke test.
 
 - [x] V2 code [PR #2](https://github.com/akbarholturaev11-lang/HSK-AI-Support/pull/2) merged into `main`: `f3a930a2ada4a2d4634a02986ec206239bc78418`.
