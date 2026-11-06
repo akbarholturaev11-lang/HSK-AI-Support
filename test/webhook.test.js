@@ -76,7 +76,7 @@ function stub() {
   }; } }; } };
   return {
     env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake" },
-    calls, users, tickets, links, settings
+    calls, users, tickets, links, settings, quotas
   };
 }
 
@@ -415,7 +415,7 @@ test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
 });
 
 test("V2 technical primary failure attempts configured MiniMax and then answers",async()=>{
-  const {env}=stub();
+  const {env,quotas}=stub();
   const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
   env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["Chinese lessons are available."]})})};
   env.BACKUP_ENABLED="true";
@@ -437,6 +437,7 @@ test("V2 technical primary failure attempts configured MiniMax and then answers"
       message_id:9903,text:"Что такое HSK AI?"}};
     assert.equal((await call(env,update)).status,200);
     assert.equal(calls,2);
+    assert.equal(quotas.get("backup-month:"+new Date().toISOString().slice(0,7)),1);
     assert.ok(tg.some(x=>x.data.text==="Откройте раздел курса."));
   }finally{globalThis.fetch=orig;}
 });
