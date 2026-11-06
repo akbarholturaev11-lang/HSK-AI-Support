@@ -59,7 +59,8 @@ test("MiniMax is called once after primary failure when both gates and budget al
     AI:{run:async(model,req)=>{
       models.push(model);
       if(models.length===1) throw Error("worker-ai-429");
-      assert.equal(req.max_tokens,512);
+      assert.equal(req.max_completion_tokens,512);
+      assert.equal(req.reasoning_effort, "low");
       return decision("Муроҷиатингиз қабул қилинди.");
     }}
   };
