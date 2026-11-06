@@ -80,7 +80,7 @@ async function backupProvider(env,messages,imageDataUrl,claimQuota) {
   if (!await claimQuota(env,"backup-month:"+month,300)) return null;
   try {
     const response=await env.AI.run(env.BACKUP_MODEL || BACKUP_MODEL,{
-      messages,max_completion_tokens:220,reasoning_effort:"low",
+      messages,max_completion_tokens:768,reasoning_effort:"low",
       ...(imageDataUrl ? {image:imageDataUrl}: {})
     });
     return decide(response);
