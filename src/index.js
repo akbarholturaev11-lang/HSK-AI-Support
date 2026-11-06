@@ -284,7 +284,7 @@ async function handleAdmin(env, message) {
 }
 
 
-async function registerWebhookOnce(env) {
+async function registerWebhookOnce(env, verify = false) {
   if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.DB) return { status: "missing_configuration" };
   const origin = String(env.PUBLIC_WORKER_ORIGIN || "").replace(/\/+$/, "");
   if (!/^https:\/\/[a-z0-9.-]+$/i.test(origin)) return { status: "invalid_origin" };
@@ -295,7 +295,26 @@ async function registerWebhookOnce(env) {
   const previous = await env.DB.prepare(
     "SELECT value FROM service_settings WHERE key='telegram_webhook_sha256'"
   ).first();
-  if (previous?.value === fingerprint) return { status: "registered" };
+  if (previous?.value === fingerprint) {
+    if (!verify) return { status: "registered" };
+    try {
+      const info = await telegram(env, "getWebhookInfo", {});
+      if (info?.url === url) {
+        return {
+          status: "registered",
+          pending_updates: Number(info.pending_update_count || 0),
+          delivery_error: Boolean(info.last_error_message),
+          last_error_at: info.last_error_date || null
+        };
+      }
+      // If another process replaced the webhook, register our fixed endpoint again.
+    } catch (error) {
+      return {
+        status: /^telegram_http_(401|403|404)$/.test(String(error?.message || "")) ?
+          "invalid_telegram_token" : "verification_failed"
+      };
+    }
+  }
 
   // Registration is always for our fixed URL. Block repeated public activation attempts.
   const now = Math.floor(Date.now() / 1000);
@@ -375,7 +394,7 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") return ok();
     if (request.method === "GET" && url.pathname === "/activate") {
       try {
-        const result = await registerWebhookOnce(env);
+        const result = await registerWebhookOnce(env, true);
         return Response.json({ ...result, webhook: "/webhook", credentials_visible: false },
           { headers: { "cache-control": "no-store" } });
       } catch {
