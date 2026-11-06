@@ -1,6 +1,15 @@
 name = "hsk-ai-support"
 main = "src/index.js"
-compatibility_date = "2026-11-01"
+compatibility_date = "2026-11-06"
+workers_dev = true
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.1
 
 [vars]
 AI_BASE_URL = "https://api.openai.com/v1/chat/completions"
@@ -12,4 +21,4 @@ crons = ["0 3 * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "hsk-ai-support"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "4185e7cc-260a-4931-abdb-426bd6f21cfb"
