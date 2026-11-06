@@ -133,14 +133,16 @@ test("without AI key, user escalation and operator reply both work", async () =>
     assert.match(calls[0].text, /<code>\/close<\/code>/);
     assert.match(calls[0].text, /<blockquote>У меня пропала подписка<\/blockquote>/);
     assert.doesNotMatch(calls[0].text, /Как ответить|Source:|Telegram:|ID:|Ticket #|Name:/);
-    assert.equal(calls.length,1,"do not send an automated acknowledgement to user");
+    assert.equal(calls.length,2,"a newly opened ticket gets exactly one acknowledgement");
+    assert.equal(calls[1].chat_id,51);
+    assert.match(calls[1].text,/передано оператору/i);
     assert.equal(links.get(400), 1);
     const admin = { update_id: 201, message: { chat: { id: -100234, type: "supergroup" }, from: { id: 77 }, message_id: 999, text: "Уточните дату", reply_to_message: { message_id: 400 } } };
     assert.equal((await call(env, admin)).status, 200);
-    assert.equal(calls.length,2,"only an actual operator reply is sent to user");
-    assert.equal(calls[1].chat_id, 51);
-    assert.equal(calls[1].from_chat_id, "-100234");
-    assert.equal(calls[1].message_id, 999);
+    assert.equal(calls.length,3,"operator reply is copied with no extra bot acknowledgement");
+    assert.equal(calls[2].chat_id, 51);
+    assert.equal(calls[2].from_chat_id, "-100234");
+    assert.equal(calls[2].message_id, 999);
   } finally { globalThis.fetch = original; }
 });
 
@@ -360,7 +362,8 @@ test("ticket with no Telegram username retains user ID and safe fallback", async
     assert.match(calls[0].text, /tg:\/\/user\?id=108/);
     assert.match(calls[0].text, /<blockquote>Оператор керак<\/blockquote>/);
     assert.doesNotMatch(calls[0].text, /ID:|Telegram:|Source:|Name:/);
-    assert.equal(calls.length,1);
+    assert.equal(calls.length,2);
+    assert.match(calls[1].text,/передано оператору/i);
   } finally { globalThis.fetch = previous; }
 });
 
@@ -567,7 +570,7 @@ test("V2 missing R2 binding fails closed instead of using stale local FACTS",asy
 });
 
 
-test("operator chat stays silent: one header, subsequent user messages copied, no auto replies on close", async () => {
+test("operator chat notifies only on ticket open and close; follow-ups remain silent", async () => {
   const {env,tickets,links}=stub();
   let nextId=500;
   const calls=[];
@@ -582,33 +585,38 @@ test("operator chat stays silent: one header, subsequent user messages copied, n
       update_id,message:{chat:{id:601,type:"private"},from,message_id,[field]:value}
     });
     assert.equal((await call(env,userMessage(600,91,"text","Приложение <не работает>"))).status,200);
-    assert.equal(calls.length,1);
+    assert.equal(calls.length,2);
     assert.equal(calls[0].method,"sendMessage");
     assert.equal(calls[0].data.parse_mode,"HTML");
     assert.match(calls[0].data.text,/<blockquote>Приложение &lt;не работает&gt;<\/blockquote>/);
     assert.equal(links.get(500),1);
+    assert.equal(calls[1].data.chat_id,601);
+    assert.match(calls[1].data.text,/передано оператору/i);
     assert.equal((await call(env,userMessage(601,92,"text","Вот новая ошибка"))).status,200);
-    assert.equal(calls.length,2);
-    assert.equal(calls[1].method,"copyMessage");
-    assert.equal(calls[1].data.chat_id,"-100234");
-    assert.equal(calls[1].data.message_id,92);
-    assert.equal(links.get(501),1);
+    assert.equal(calls.length,3,"ongoing chat has no automatic message to user");
+    assert.equal(calls[2].method,"copyMessage");
+    assert.equal(calls[2].data.chat_id,"-100234");
+    assert.equal(calls[2].data.message_id,92);
+    assert.equal(links.get(502),1);
     const photo={update_id:602,message:{chat:{id:601,type:"private"},from,message_id:93,caption:"Новый экран",photo:[{file_id:"test",file_size:100}]}};
     assert.equal((await call(env,photo)).status,200);
-    assert.equal(calls.length,3);
-    assert.equal(calls[2].method,"copyMessage");
-    assert.equal(calls[2].data.message_id,93);
-    assert.equal(links.get(502),1);
-    const admin={update_id:603,message:{chat:{id:-100234,type:"supergroup"},from:{id:87},message_id:1001,
-      text:"Проверьте версию",reply_to_message:{message_id:501}}};
-    assert.equal((await call(env,admin)).status,200);
     assert.equal(calls.length,4);
     assert.equal(calls[3].method,"copyMessage");
-    assert.equal(calls[3].data.chat_id,601);
+    assert.equal(calls[3].data.message_id,93);
+    assert.equal(links.get(503),1);
+    const admin={update_id:603,message:{chat:{id:-100234,type:"supergroup"},from:{id:87},message_id:1001,
+      text:"Проверьте версию",reply_to_message:{message_id:502}}};
+    assert.equal((await call(env,admin)).status,200);
+    assert.equal(calls.length,5);
+    assert.equal(calls[4].method,"copyMessage");
+    assert.equal(calls[4].data.chat_id,601);
     const close={update_id:604,message:{chat:{id:-100234,type:"supergroup"},from:{id:87},message_id:1002,
-      text:"/close",reply_to_message:{message_id:502}}};
+      text:"/close",reply_to_message:{message_id:503}}};
     assert.equal((await call(env,close)).status,200);
     assert.equal(tickets.get(1).status,"closed");
-    assert.equal(calls.length,4,"closing is silent both for admin group and user");
+    assert.equal(calls.length,7,"closing sends one status to user and one to admin");
+    assert.equal(calls[5].data.chat_id,601);
+    assert.match(calls[5].data.text,/закрыл обращение/i);
+    assert.equal(calls[6].data.chat_id,"-100234");
   } finally { globalThis.fetch=original; }
 });
