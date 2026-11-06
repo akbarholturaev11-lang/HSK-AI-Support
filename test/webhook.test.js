@@ -716,3 +716,65 @@ test("/start returns from open operator ticket to AI and restores one menu",asyn
     assert.ok(!calls.slice(last).some(x=>x.method==="copyMessage"&&x.data.chat_id==="-100234"));
   }finally{globalThis.fetch=original;}
 });
+
+
+test("Uzbek language request works without a picker, R2 facts or auto-operator",async()=>{
+  const {env,users,tickets}=stub();
+  let kbReads=0;
+  env.KB={get:async()=>{kbReads++;throw Error("R2 unavailable");}};
+  const aiPrompts=[];
+  env.AI={run:async(_model,request)=>{
+    aiPrompts.push(request.messages[0].content);
+    return {response:JSON.stringify({
+      action:"answer",answer:"Албатта! Ўзбек тилида суҳбатлашамиз. HSK AI бўйича қандай ёрдам керак?"
+    })};
+  }};
+  const messages=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();
+    if(method==="sendMessage") messages.push(JSON.parse(init.body));
+    return Response.json({ok:true,result:{message_id:2000+messages.length}});
+  };
+  const from={id:901,language_code:"ru"};
+  const send=(update_id,text)=>call(env,{update_id,message:{
+    chat:{id:901,type:"private"},from,message_id:update_id,text
+  }});
+  try{
+    assert.equal((await send(9100,"/start ru_android")).status,200);
+    assert.equal(users.get(901).lang,"ru");
+    assert.equal((await send(9101,"салом ўзбек тилида суҳбатлаша оламизми?")).status,200);
+    assert.equal(users.get(901).lang,"uz");
+    assert.match(aiPrompts[0],/MANDATORY REPLY LANGUAGE: Uzbek/);
+    assert.equal(kbReads,0,"a language request should not require R2");
+    assert.match(messages.at(-1).text,/Ўзбек тилида/);
+    assert.equal((await send(9102,"ээээ")).status,200);
+    assert.equal(users.get(901).lang,"uz","ambiguous messages must retain preferred language");
+    assert.equal(messages[0].reply_markup?.inline_keyboard?.length,2);
+    assert.ok(messages.slice(1).every(m=>!m.reply_markup),"menu appears only on /start");
+    assert.equal(tickets.size,0,"social turns cannot open operator tickets");
+  }finally{globalThis.fetch=original;}
+});
+
+test("AI outage keeps Uzbek greeting natural without a product-KB fallback loop",async()=>{
+  const {env,users,tickets}=stub();
+  let kbReads=0;
+  env.KB={get:async()=>{kbReads++;return null;}};
+  const messages=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url).endsWith("/sendMessage")) messages.push(JSON.parse(init.body));
+    return Response.json({ok:true,result:{message_id:1}});
+  };
+  const from={id:902,language_code:"ru"};
+  try{
+    const update={update_id:9200,message:{chat:{id:902,type:"private"},from,
+      message_id:9200,text:"салом ўзбек тилида суҳбатлаша оламизми?"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(users.get(902).lang,"uz");
+    assert.match(messages.at(-1).text,/Ўзбек тилида/);
+    assert.doesNotMatch(messages.at(-1).text,/Уточните|\/operator/);
+    assert.equal(kbReads,0);
+    assert.equal(tickets.size,0);
+  }finally{globalThis.fetch=original;}
+});
