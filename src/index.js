@@ -1,4 +1,4 @@
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi } from "./logic.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer } from "./ai.js";
 
@@ -201,7 +201,7 @@ async function handlePrivate(env, message) {
   if (!message.text && (message.photo?.length || message.document)) {
     const caption=limitText(message.caption || "",1300);
     // Keep sensitive payment proofs and credential photos within human support.
-    if (shouldAvoidAi(caption) || /чек|receipt|bank\s*card|карта\s*банк|платёжн(?:ый|ая)\s*документ/iu.test(caption)) {
+    if (shouldAvoidAi(caption) || requiresHumanVerification(caption) || /чек|receipt|bank\s*card|карта\s*банк|платёжн(?:ый|ая)\s*документ/iu.test(caption)) {
       await forwardToOperator(env,user,ctx,message);
       return;
     }
@@ -223,6 +223,10 @@ async function handlePrivate(env, message) {
   }
   const text = limitText(message.text, 1300);
   if (!text) return;
+  if (requiresHumanVerification(text)) {
+    await forwardToOperator(env,user,ctx,message);
+    return;
+  }
   const faq = explicitFaq(text, ctx.lang);
   if (faq) {
     await sendUser(env, user.id, faq, menu(ctx.lang));
