@@ -11,12 +11,12 @@ function equalSecret(a, b) {
   return diff === 0;
 }
 
-async function telegram(env, method, params) {
+async function telegram(env, method, params, timeoutMs = 8000) {
   const resp = await fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/" + method, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(params),
-    signal: AbortSignal.timeout(8000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
   if (!resp.ok) throw new Error("telegram_http_" + resp.status);
   const body = await resp.json();
@@ -30,6 +30,16 @@ async function sendUser(env, tgId, text, replyMarkup = null) {
     text,
     ...(replyMarkup ? { reply_markup: replyMarkup } : {})
   });
+}
+
+// Telegram displays "typing…" for up to 5 seconds. Keep this best-effort:
+ // a failed status request must never stop the user's actual answer.
+async function showTyping(env, tgId) {
+  try {
+    await telegram(env, "sendChatAction", { chat_id: tgId, action: "typing" }, 1800);
+  } catch {
+    // Typing is optional; don't delay or fail an answer on status errors.
+  }
 }
 
 async function notifyUser(env, tgId, text) {
@@ -122,13 +132,17 @@ async function askAi(env, userId, lang, input) {
   if (!await claimQuota(env, "ai-global", 60)) return null;
   const system = [
     "You are the minimal HSK AI product support assistant, not a tutor.",
-    "Reply only in language code " + lang + ". Be concise and natural.",
+    "Reply only in language code " + lang + ". Write like a helpful human, not an instruction manual.",
+    "Use 1 or 2 short sentences, at most 220 characters total. No lists, headings, long explanations or formal introductions.",
+    "Ask only one simple follow-up question if needed. Do not use markdown or more than one emoji.",
     "Only the following facts are confirmed:",
     ...FACTS.map((item) => "- " + item),
     "Never invent procedures or details absent from these facts.",
     "If the user's issue needs checking their account, subscription, payment or a bug, hand off.",
     'Output only valid JSON: {"action":"answer","answer":"..."} or {"action":"handoff","answer":""}.'
   ].join("\n");
+  await showTyping(env, userId);
+  const typingTimer = setInterval(() => { void showTyping(env, userId); }, 4000);
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -139,7 +153,7 @@ async function askAi(env, userId, lang, input) {
           { role: "system", content: system },
           { role: "user", content: limitText(input, 650) }
         ],
-        max_tokens: 240
+        max_tokens: 160
       }),
       signal: AbortSignal.timeout(6500)
     });
@@ -151,6 +165,8 @@ async function askAi(env, userId, lang, input) {
   } catch {
     console.warn("support_ai_unavailable");
     return null;
+  } finally {
+    clearInterval(typingTimer);
   }
 }
 
