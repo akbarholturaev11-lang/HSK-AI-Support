@@ -44,7 +44,10 @@ export function requiresHumanVerification(input) {
   const individual=/мой|моё|моя|моей|мою|менинг|мени|менга|мен|ман|шахси|мой чек|чеки ман|чеким|аккаунтим|аккаунти ман|обунам|my |mine|i paid|у меня|менда|маро/u.test(t);
   const verify=/тасдиқ|подтвержд|проверь|провер|санҷ|текшир|статус|проверка|approved|success|платёж не|оплата не|не пришл|не актив|списал|не работает|не открыв|ошиб|хато|намекунад|кушода намешавад|очилмаяпти|ишламаяпти|қайтар|вернуть|refund/u.test(t);
   if(payment && individual && (verify || /чек|receipt|чеки/u.test(t))) return true;
-  if(account && individual && verify) return true;
+  // General sign-in troubleshooting belongs to AI; only inspecting a private
+  // user record/entitlement requires human identity verification.
+  const recordCheck=/проверь|провер|текшир|санҷ|тасдиқ|подтвержд|статус|аккаунтимни кўр|ҳисобамро бин|status|account check/u.test(t);
+  if(account && individual && recordCheck) return true;
   return false;
 }
 
