@@ -3,8 +3,6 @@ import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer, AI_NO_FACTS, AI_QUOTA } from "./ai.js";
 import { saveConversationExchange, clearConversationContext } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
-import { chooseOfficialLink, recentAccountTopic } from "./links.js";
-import { loadRecentConversation } from "./conversation.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 const fail = (status) => new Response("unavailable", { status });
@@ -306,18 +304,6 @@ async function handlePrivate(env, message) {
   if (shouldAvoidAi(text)) {
     await sendUser(env, user.id, copy.sensitive);
     return;
-  }
-  // Direct official-link requests should not depend on AI output or quota.
-  // Never replace an active login-support conversation with a download link.
-  const wantsLink=/(?:ссылка|ссылку|ссылк|силка|линк|ҳавола|манзил|юбор|ташлаб|беринг|скач|загруз|download|ўрнат|установ)/iu.test(text);
-  const hasAccountContext=recentAccountTopic(await loadRecentConversation(env,user.id));
-  if (wantsLink && !hasAccountContext) {
-    const url=chooseOfficialLink(text,"",detectReplyLanguage(ctx.lang,text),[]);
-    if (url) {
-      const short=detectReplyLanguage(ctx.lang,text)==="uz"?"Мана расмий ҳавола:":detectReplyLanguage(ctx.lang,text)==="tj"?"Ин пайванди расмӣ:":"Вот официальная ссылка:";
-      await sendUser(env,user.id,short+"\n"+url);
-      return;
-    }
   }
   const answer = await askAi(env, user.id, ctx.lang, text);
   if (answer===AI_NO_FACTS) {
