@@ -79,7 +79,7 @@ const RELATED = Object.freeze({
   android:["accounts","general"],
   pwa:["general","accounts"],
   telegram:["accounts","general"],
-  general:["pwa","android"]
+  general:[]
 });
 
 export function selectContextualKnowledgeTopics(input, history = []) {
