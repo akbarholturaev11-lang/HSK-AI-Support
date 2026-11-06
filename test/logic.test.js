@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, parseAiDecision } from "../src/logic.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, parseAiDecision, isUiFeedback } from "../src/logic.js";
 import { explicitFaq, menu } from "../src/content.js";
 
 test("Deep links select language and source, reject unexpected values", () => {
@@ -64,4 +64,14 @@ test("V2 generic sign-in questions get safe localized FAQ instead of invented st
   assert.match(explicitFaq("Как войти в аккаунт?","ru"),/Аккаунт и вход/);
   assert.match(explicitFaq("Чӣ тавр ба аккаунт дароям?","tj"),/Ҳисоб ва воридшавӣ/);
   assert.match(explicitFaq("Аккаунтга қандай кираман?","uz"),/Аккаунтга кириш/);
+});
+
+test("visual feedback identifies UX criticisms but not personal payment checks",()=>{
+  assert.equal(isUiFeedback("интерфейс не очень хороший"),true);
+  assert.equal(isUiFeedback("Дизайн ужасный"),true);
+  assert.equal(isUiFeedback("Интерфейс жуда ноқулай"),true);
+  assert.equal(isUiFeedback("Дизайн ва кўриниш яхши эмас"),true);
+  assert.equal(isUiFeedback("Мой платеж не прошел"),false);
+  assert.equal(isUiFeedback("Как войти в аккаунт?"),false);
+  assert.equal(isUiFeedback("Как открыть интерфейс оплаты?"),false);
 });
