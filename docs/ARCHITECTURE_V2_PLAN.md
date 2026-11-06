@@ -1,23 +1,23 @@
 # HSK AI Support — V2 архитектура режаси
 
 **Сана:** 2026-11-06
-**Ҳолат:** DRAFT — архитектура муҳокамада. ChatGPT Scheduled Agent ишга қўйилди; Cloudflare R2 private bucket ва Worker KB binding тайёр; биринчи 7 бўлимли English knowledge sync бажарилган. AI Gateway захира қисми ҳали муҳокамада.
+**Ҳолат:** АРХИТЕКТУРА ҚАРОРЛАРИ ТАСДИҚЛАНГАН — V2 код реализацияси ва тўлиқ end-to-end тестлар ҳали бажарилмаган. ChatGPT Scheduled Agent жадвалга қўйилган; Cloudflare R2 private bucket ва Worker `KB` binding тайёр; биринчи 7 бўлимли English knowledge sync бажарилган. MiniMax захира модели, Unified Billing ва бюджет режада тасдиқланган, аммо тўлов ва live fallback ёқилмаган.
 **Қамров:** фақат HSK AI Support Bot. Асосий HSK AI Railway/PostgreSQL серверига сўров юборилмайди.
 
 ## 1. Тасдиқланган қарорлар
 
 1. Бот Telegram’даги мавжуд FAQ, 24/7 мурожаат қабул қилиш, typing, Reply оператор жавоблари, ticket ва /close механизмларини сақлайди.
 2. AI’ни битта жойдан алмаштирамиз: Cloudflare AI Gateway + Dynamic Routing. Бирламчи — Cloudflare Workers AI’нинг бепул Neuron квотаси, захира — битта ташқи AI провайдери.
-3. R2 Standard — English маҳсулот маълумотларини мавзулар бўйича қисқа JSON файлларда сақлаш; D1 — тикетлар, лимит ва керак бўлса қидирув индекси. GitHub Scheduled Agent ўзгариш бўлганда автоматик янгилайди.
+3. R2 Standard — English маҳсулот маълумотларини мавзулар бўйича қисқа JSON файлларда сақлаш; D1 — тикетлар ва лимитлар. **ChatGPT Scheduled Agent** GitHub `HSK-AI-Bot/main` ни текширади ва ўзгарган файлларни R2'га тўғридан-тўғри ёзади. Мавзуни танлаш Worker'да keyword→topic map, D1 қидирув индекси MVP'да йўқ.
 4. Билимлар базаси **битта English каноник тилда** сақланади. Ҳар ҳужжатда ru/tj/uz таржималари ёки lang майдони бўлмайди. AI фойдаланувчига унинг тилида жавоб беради. Кириш ҳаволасидан тилни билиш сақланади, лекин user бошқа тилда ёзса жавоб ўша тилга ўтади. Тил танлаш экрани йўқ.
 5. Чекланган AI: 1–2 қисқа жумла, одатда 220 белгидан узун эмас. Асоссиз тўлов тасдиғи, қайтарим, аккаунт текшируви ёки баг тузатилганини айтиш тақиқ.
 6. Gateway ёрдамида мос провайдерлар моделини конфигурация орқали алмаштириш. Бошқа API протоколидаги ҳар қандай модель учун 100% автоматик мослик ваъда қилинмайди — баъзан адаптер керак.
-7. Иккала AI ишламаса бот тўхтамайди: маълумотли FAQ ёки операторга ticket. Скриншотлар AI’га эмас, операторга.
+7. Иккала AI ишламаса бот тўхтамайди: маълумотли FAQ ёки операторга ticket. **V2'да фото/скриншот аввал AI Vision'да кўрилади**, у ишламаса ёки ишончсиз бўлса расм операторга узатилади. **Ҳозирги live ботда** сурат тўғридан-тўғри операторга кетади.
 8. Фойдаланувчининг шахсий аккаунт, тўлов ва хабар маълумотлари KB’га ёзилмайди. R2 private, API калитлари фақат Secret.
 
 ## 2. Архитектура ва ягона созлаш нуқтаси
 
-Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 1–3 English ҳужжат → AI Gateway route → Telegram қисқа жавоб.
+**V2 мақсадли оқим:** Telegram → Cloudflare Worker → аниқ FAQ бўлса дарҳол жавоб; акс ҳолда Worker keyword→topic map → R2 `knowledge/` дан мос **1–2** English JSON → AI (Cloudflare Workers AI primary; техник хато/лимитда MiniMax via AI Gateway backup) → Telegram қисқа жавоб. Агар model/KB ишламаса, оператор тикети. Фото учун шу оқимдан олдин vision parsing қўшилади. Бу ҳозирги live Worker коди эмас.
 
 **Q12 — ТАСДИҚЛАНДИ (A):** Cloudflare AI Gateway Dashboard — асосий модель, захира модель, провайдер, route ва gateway-level лимитни бошқарадиган ягона интерфейс. Admin PWA/Telegram'дан API ўзгартириш интерфейси қурилмайди. Махфий калитлар Gateway BYOK/Secrets Store ёки мувофиқ бўлса Unified Billing орқали бошқарилади. Worker фақат битта нормализацияланган generateAnswer() интерфейсини чақиради.
 
@@ -33,17 +33,18 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 2. SHA ўзгармаган бўлса — **тўхтайди, R2'га тегмайди, фойдаланувчига хабар юбормайди**.
 3. SHA ўзгарган бўлса — фақат янги commit diff'ларини ва зарур бўлса тегишли янги код/қоидаларни ўқийди. Бутун катта репозиторийни ҳар сафар қайта таҳлил қилмайди.
 4. Фойдаланувчига тегишли **текшириб бўладиган маҳсулот қоидаси** ўзгарган бўлса, фақат шу бўлимнинг English JSON файлини янгилайди. Ботга тегишли бўлмаган рефактор, тест, internal-only ўзгаришларига тегмайди.
-5. Янгиланган KB файли ва охирги текширилган SHA GitHub'да қайд қилинади, R2 билан автоматик sync қилинади. R2 ишга тушгунча GitHub — staging source; ишга тушганидан кейин автоматик publish, owner approval йўқ.
+5. Ўзгарган English topic JSON файллари **ChatGPT Scheduled Agent'дан Cloudflare API орқали тўғридан-тўғри R2'га** ёзилади. Фақат ёзишлар муваффақиятли бўлгач R2'даги `knowledge/sync_state.json` last_checked_sha янгиланади. GitHub Support repo'си орқали KB publish, GitHub Actions sync, қўл approval **йўқ**.
 
 ### Содда R2 тузилиши
 
-- `kb/payments.json`
-- `kb/subscriptions.json`
-- `kb/accounts.json`
-- `kb/android.json`
-- `kb/pwa.json`
-- `kb/telegram.json`
-- `kb/general.json`
+- `knowledge/payments.json`
+- `knowledge/subscriptions.json`
+- `knowledge/accounts.json`
+- `knowledge/android.json`
+- `knowledge/pwa.json`
+- `knowledge/telegram.json`
+- `knowledge/general.json`
+- `knowledge/sync_state.json` — цикл SHA checkpoint; AI учун маҳсулот факти эмас.
 
 Бир мавзуда фактлар жуда кўпайса, кейин кичик файлларга бўлинади. **Q13 қабул қилинди (A):** ҳар topic учун 1 та асосий файл + 1 та аввалги backup версия сақланади. Фақат content ўзгарганда ҳозирги файл backup'га кўчирилади, сўнг янги версия ёзилади. Хато янгиланишда backup'дан rollback қиламиз. Draft/approved workflow, қўл тасдиғи, узун версия тарихи йўқ. **Эслатма:** бу ҳозирча режа, R2'да эски версияни сақлаш коди ҳали ишга туширилмаган.
 
@@ -55,7 +56,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Агент:** ChatGPT Schedule'да `HSK AI KB Sync` фаол, ҳар 4 соатлик main SHA/diff текширув. R2 API'га бевосита ёзади. KB'да янги факт бўлмаса файл ва хабар ўзгармайди. Фақат R2 файлларининг барча upload'лари муваффақиятли ўтса `knowledge/sync_state.json` checkpoint янгиланади.
 
-**Реал ҳолат:** Cloudflare R2 фаол. `hsk-ai-support-kb` private bucket (Standard, EEUR) яратилган, `knowledge/sync_state.json` бошланғич ҳолатда ёзилган (`last_checked_sha: null`). Cloudflare Support Worker'да `KB` binding бор. Биринчи baseline main SHA `c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073` асосида 7 та English KB JSON яратилди, ҳар бири R2'га ёзилди ва қайта ўқиб текширилди. `knowledge/sync_state.json` ушбу SHA билан `synced` бўлди. Кейинги **режали** автоном цикл ҳали алоҳида тасдиқланмаган.
+**Реал ҳолат:** Cloudflare R2 фаол. `hsk-ai-support-kb` private bucket (Standard, EEUR), Worker'да `KB` binding бор. Биринчи baseline `main` SHA `c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073` асосида 7 та English KB JSON ёзилган ва қайта ўқиб текширилган. `knowledge/sync_state.json` шу SHA'га `synced` бўлган; бу `last_checked_sha: null` дегани **эмас**. Навбатдаги мустақил scheduled run муваффақияти ҳали алоҳида исботланмаган.
 
 ## 4. R2 билимларини AI жавобларига улаш — ҲАЛИ АМАЛГА ОШИРИЛМАГАН
 
@@ -76,7 +77,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Келишув қоидаси:** Муҳокама пайтида сен саволга жавоб бермасдан кейингисига ўтсанг, тавсия қилинган вариант **режада қабул қилинган default** деб қайд этилади. Фикрингни кейин ўзгартиришинг мумкин. Бу қоида **пуллик API billing, махфий калит, production deploy ёки бошқа таъсирли ҳаракатга ўз-ўзидан рухсат** ҳисобланмайди.
 
-## 4.1. Фото/скриншот ва AI Vision — мажбурий V2 функцияси
+### 4.1. Фото/скриншот ва AI Vision — мажбурий V2 функцияси
 
 **Ҳозирги код ҳолати:** `src/index.js`'да Telegram `message.text` бўлмаса, `handlePrivate()` `forwardToOperator()`'га ўтади. Расм ва унинг caption'и `copyMessage` орқали оператор гуруҳига боради; админ `copyMessage` билан user'га фото/матн қайтариши мумкин. **AI расмни таҳлил қилмайди.** Бу функция V2 реализациясида алоҳида қўшилади.
 
@@ -112,7 +113,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 - Primary: Cloudflare Workers AI free quota. Secondary: битта танланган ташқи provider.
 - Fallback: quota/429, 5xx, timeout, provider unavailable каби техник сабабларда. Далилсиз саволга жавоб йўқлигида бошқа модель фантазия қилишга чақирилмайди.
 - Бир мурожаат учун максимум 1 primary + 1 backup AI чақируви; ишламаса operator ticket.
-- User/day ва global лимитлари қайта белгиланади; ҳозирги 3/user ва 60/global қийматлари доимий тасдиқланган қоида эмас.
+- **Тасдиқланган V2 лимит — 20 та AI мурожаати/user/кун** (матн ёки фото). Ҳозирги live коддаги 3/user/кун ва 60/global/кун — эски реализация; V2'да global Neuron/backup budget ва abuse protection мослаштирилиб алоҳида тест қилинади. FAQ, оператор тикети ва оператор жавоблари AI лимитига кирмайди.
 - Жавоб чеклови: 1–2 жумла ва 220 белги; RU/TJ/UZ end-to-end текширув.
 - API credentials GitHub’да ёки R2 ҳужжатларида бўлмайди. AI Gateway logging request body, username, Telegram ID, PII бўйича privacy review.
 - Provider/model, quota error, fallback trigger, latency, approximate cost каби метрикаларни user матнисиз сақлаш.
@@ -130,7 +131,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Phase 4 — rollout:** CI, staging, камида 30 та RU/TJ/UZ сценарий-тест, quota/timeout/invalid token/cost tests, операторга тўғри ўтиш, мониторинг. Production deployment фақат owner тасдиғи ва rollback варианти билан.
 
-## 6.1. Техник саволлар бўйича мутахассис қарори (Q15–Q16)
+### 6.1. Техник саволлар бўйича мутахассис қарори (Q15–Q16)
 
 - **Q15:** биргина `Cloudflare AI Gateway` router. Supported model/provider'лар Dashboard route конфигурацияси орқали танланади; бу йўлда Worker'нинг Telegram logic'ини қайта ёзиш шарт эмас. Агар келажакда model API формати Gateway билан мос келмаса, `provider adapter` алоҳида қатламда ёзилади. **Ҳар бир моделни мутлақ кодсиз улаш мумкин деган кафолат йўқ.**
 - **Q16:** техник ижрочи 10 та ҳақиқий Support сценарийни тузади (тўлов, обуна, аккаунт, Android, PWA, Telegram, умумий маълумот, лимит, fallback, операторга ўтиш); ҳар бирини узбек, тожик, рус тилларида синаб, камида 30 та тест ҳолати бажаради. Фактлар ва статуслар KB'га тўғри мос бўлиши; бот ўзида йўқ маълумотни ўйлаб топмаслиги; токен/карта/PII чиқмаслиги; жавоб тили тўғри бўлиши; техник fallback ва оператор тикети ишлаши шарт. Хатолар топилса тузатиш ва қайта тест, кейин QA ҳисоботи. Финал release инсон тасдиғисиз қилинмайди; owner'га фақат тайёр натижа ва муҳим қарорлар тақдим этилади.
@@ -139,18 +140,18 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 - HSK AI Railway серверига Support’дан 0 сўров.
 - Модел ва backup алмашиш Telegram кодини таҳрирламасдан мумкин.
-- FAQ AI/R2сиз; KB сўрови максимум 1–3 R2 ҳужжат.
+- FAQ AI/R2сиз; KB сўрови максимум **1–2** R2 English ҳужжат (keyword→topic map), ҳеч қандай D1 index/AI classifier шарт эмас.
 - KB бир тилда, текширилган main кодга таянган ва source_commit'ли. Таржима дубликатлари йўқ; файл фақат факт ўзгарганда қайта ёзилади.
 - Free AI quota exhaustion ҳолатида захира ишлайди; у ҳам ишламаса Telegram операторга ticket келади.
 - Фото/скриншот AI Vision билан текширилади, R2 KB'га асосланиб қисқа жавоб берилади; image vision ишламаса асл сурат operator'га юборилади. Расм KB/R2'га сақланмайди, payment approval AI'дан қилинмайди.
 - Ботнинг мавжуд Reply, /close, фото, deep-link, typing ва webhook имкониятлари бузилмайди.
 - Лимит, харажат, AI хатолари ва rollback амалда текширилган.
 
-## 8. Муҳокама учун ОЧИҚ қарорлар
+## 8. Қабул қилинган қарорлар — архив
 
 **Муҳокама қоидаси:** ҳар савол бўйича 2–3 та содда вариант ва **аниқ тавсия** берилади; сен жавоб бермасдан кейингисига ўтсанг, тавсияни режа учун танланган default деб ҳисоблаймиз. Кейин ўзгартириш мумкин. Бироқ жим қолиш — пулли хизматни ёқиш ёки production'га ўзгариш жойлаштиришга рухсат эмас.
 
-| ID | Савол | Таклиф (тасдиқланмаган) |
+| ID | Савол | Тасдиқланган қарор |
 |---|---|---|
 | Q4 (ЕЧИЛГАН) | Биринчи KB қамрови | 7 та бўлим R2’да яратилди: payments, subscriptions, accounts, android, pwa, telegram, general. |
 | Q17 (ЕЧИЛГАН) | R2'дан файл танлаш | **A — Worker'да keyword→topic map, максимум 1–2 English файл.** Фойдаланувчи аниқ танлади. |
@@ -167,9 +168,9 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q15 (ЕЧИЛГАН — техник қарор) | Бошқа AI моделини қўшиш | **A — Cloudflare AI Gateway орқали ягона router**. Gateway қўллаб-қувватлайдиган provider/model конфигурацияси Dashboard'да алмаштирилади; native API мос келмаса фақат ўша provider учун кичик adapter. Telegram handler'ларда provider-specific код йўқ. Мутахассислик қарори, owner учун қўшимча вазифа йўқ. |
 | Q16 (ЕЧИЛГАН — техник қарор) | RU/TJ/UZ жавобларни қабул қилиш | **Автоматлаштирилган 30+ та тест (камида 10 та реал сценарий × 3 тил) + техник аудит**. Факт хатоси ва шахсий маълумот чиқиши: 0; тил ва қисқалик/операторга эскалация натижаси ҳам текширилади. Натижалар GitHub тест/QA ҳисоботида сақланади; owner'дан тил/кодни тестлаш талаб қилинмайди. Production release'га эса алоҳида розилик керак. |
 
-**ЕЧИЛГАН:** Q1–Q17 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **ОЧИҚ ТЕХНИК САВОЛ ҚОЛМАДИ.** Q15 ва Q16 мутахассис томонидан ҳал қилинди. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
+**ЕЧИЛГАН:** Q1–Q17. Асосий манба — `HSK-AI-Bot/main`; KB учун 4 соатлик ChatGPT Scheduled Agent; owner'нинг ҳар сафар қўл тасдиғи йўқ. Q10/B: main'га кирган user-facing ўзгаришлар release'ни кутмасдан янгиланиши белгиланган (ишончли факт мазмуни сақланади). **ОЧИҚ МАҲСУЛОТ ҚАРОРИ ҚОЛМАДИ, ЛЕКИН ТЕХНИК ИЖРО/ТЕКШИРУВ ОЧИҚ:** R2 backup copy, автоматик агент қоидасини Q10 ва Q13'га мослаштириш, V2 AI/vision/router, billing лимитлари ва E2E тестлар. Billing ва production deployment алоҳида рухсатсиз фаоллаштирилмайди.
 
-## 9. Ҳозир бажарилмайдиган ишлар
+## 9. Ҳали бажарилмаган реализация ишлари
 
 **R2 bucket ва KB Worker binding аллақачон яратилди**; бу ўзи ботнинг жавоб бериш мантиғини ўзгартирмайди. AI Gateway paid route, D1 schema migration ва KB retrieval code ҳали йўқ. Ҳозирги Support Bot одатдагидек ишлашда давом этади.
 
