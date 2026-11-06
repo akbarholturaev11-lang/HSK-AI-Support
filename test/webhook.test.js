@@ -495,6 +495,7 @@ test("V2 refuses clearly Uzbek text when Tajik reply was required",async()=>{
 
 test("V2 paid MiniMax cannot run without separate approval and a verified Gateway route",async()=>{
   const {env,tickets}=stub();
+  env.AI_MODEL="@cf/google/gemma-4-26b-a4b-it";
   const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
   env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["Chinese lessons are available."]})})};
   env.BACKUP_ENABLED="true";
