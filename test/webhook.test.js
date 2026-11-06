@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 
 function stub() {
-  const calls = [], processed = new Set(), users = new Map(), tickets = new Map(), links = new Map(), quotas = new Map(), settings = new Map();
+  const calls = [], processed = new Set(), users = new Map(), tickets = new Map(), links = new Map(), quotas = new Map(), settings = new Map(), conversations = [];
   let nextTicket = 1;
-  const DB = { prepare(sql) { return {
+  const DB = { async batch(statements) { for (const stmt of statements) await stmt.run(); }, prepare(sql) { return {
     async first() {
       if (sql.startsWith("SELECT value FROM service_settings")) {
         const key = sql.match(/key='([^']+)'/)?.[1];
@@ -16,6 +16,15 @@ function stub() {
     },
     bind(...args) { return {
     async run() {
+      if (sql.startsWith("INSERT INTO ai_conversation")) {
+        conversations.push({tg_id:args[0],role:args[1],text:args[2],created_at:args[3]});
+        return {meta:{changes:1}};
+      }
+      if (sql.startsWith("DELETE FROM ai_conversation")) {
+        for (let i=conversations.length-1;i>=0;i--)
+          if (conversations[i].tg_id===args[0]) conversations.splice(i,1);
+        return {meta:{changes:1}};
+      }
       if (sql.startsWith("INSERT INTO service_settings")) {
         const key = sql.match(/VALUES\('([^']+)'/)?.[1];
         if (key === "webhook_last_attempt") {
@@ -58,6 +67,13 @@ function stub() {
       }
       return { meta: { changes: 1 } };
     },
+    async all() {
+      if (sql.startsWith("SELECT role,text FROM ai_conversation")) {
+        return {results:conversations.filter(x=>x.tg_id===args[0]&&x.created_at>=args[1])
+          .slice(-5).reverse().map(x=>({role:x.role,text:x.text}))};
+      }
+      return {results:[]};
+    },
     async first() {
       if (sql.startsWith("SELECT value FROM service_settings")) {
         const key = sql.match(/key='([^']+)'/)?.[1];
@@ -78,7 +94,7 @@ function stub() {
     env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake",
       KB: { async get(key) {const topic=key.slice(10,-5);return {async json(){return {topic,source_commit:"c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073",facts:["HSK AI is a Chinese language learning product."]}}}}}
     },
-    calls, users, tickets, links, settings, quotas
+    calls, users, tickets, links, settings, quotas, conversations
   };
 }
 
