@@ -12,12 +12,12 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 - Support Worker binding: `KB`; the Telegram/AI response flow does **not** yet retrieve KB files. Do not represent retrieval as deployed until V2 tests and code are merged.
 - First English-only, topic-specific files in R2: `knowledge/payments.json`, `subscriptions.json`, `accounts.json`, `android.json`, `pwa.json`, `telegram.json` and `general.json`.
 - `knowledge/sync_state.json` stores the last checked `HSK-AI-Bot/main` commit SHA. It was bootstrapped to `c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073` after verifying all seven R2 objects.
-- The active ChatGPT task **HSK AI KB Sync** is scheduled every four hours, checks changes in GitHub `main`, and is configured to update **only changed** English R2 topic files directly through Cloudflare. The first *future scheduled* run has not yet been independently verified.
+- The active ChatGPT task **HSK AI KB Sync** is scheduled every four hours, checks changes in `HSK-AI-Bot/main`, and is configured to update changed English R2 topics. A synthetic Cloudflare R2 backup/replace/rollback test passed; a completed autonomous scheduled cycle under the updated rules has **not** been independently confirmed.
 - No GitHub Actions upload workflow and no separate S3 credentials are required for this connector-based path. The currently configured GitHub Actions workflow runs code tests only.
 
-## V2 staging branch — not deployed
+## V2 implementation merged to main — not deployed
 
-This branch implements the V2 code path; **the currently deployed Worker and main branch are unchanged**.
+V2 code was merged as [PR #2](https://github.com/akbarholturaev11-lang/HSK-AI-Support/pull/2) (`f3a930a`) and passed the main-branch CI. **The Cloudflare production Worker deployment was not changed:** last deployment was 2026-11-06 13:04 UTC, before the V2 merge. GitHub CI runs tests but does not deploy.
 
 - `src/knowledge.js`: keyword routing to at most two validated R2 English topic records. If a production R2 record is missing or malformed, fail closed and send a human support ticket; without the KB binding, questions fail closed to the operator; hardcoded fallback facts are not used in V2.
 - `src/ai.js`: R2-grounded short answers, language adaptation, native Gemma 4, and optional MiniMax M3.1 Flash backup on technical primary failure. Backup is **OFF by default**. It needs explicit `BACKUP_ENABLED`, `BACKUP_BILLING_APPROVED`, `BACKUP_SPEND_CAP_VERIFIED`, `AI_GATEWAY_ID` and `AI_GATEWAY_BACKUP_ROUTE` settings; Gateway currently has no deployed routes. A model handoff/uncertain answer never triggers paid retries.
@@ -53,7 +53,7 @@ This branch implements the V2 code path; **the currently deployed Worker and mai
 
 ### What the bot owner still needs to do
 
-**1. Add BOT_TOKEN secret to Cloudflare.** Open Cloudflare Dashboard → Workers & Pages → hsk-ai-support → Settings → Variables and Secrets → Add. Type **Secret**, name BOT_TOKEN, value: token from Telegram BotFather. Never paste the bot token in GitHub or chat.
+**1. Secure the existing BOT_TOKEN Cloudflare binding.** Open Cloudflare Dashboard → Workers & Pages → hsk-ai-support → Settings → Variables and Secrets. Find the existing BOT_TOKEN (currently Plain Text), securely replace/re-enter it as type Secret with the **same actual BotFather token**, then save and verify webhook. Do **not** create two BOT_TOKEN bindings or paste the token in GitHub or chat.
 
 The Worker will register its Telegram webhook using the secret already stored in Cloudflare. For an immediate registration or live status check, open https://hsk-ai-support.hskaiiapp.workers.dev/activate . This one-tap endpoint is rate-limited, does not expose tokens, and reports Telegram delivery errors. Cloudflare Cron also checks automatically.
 
