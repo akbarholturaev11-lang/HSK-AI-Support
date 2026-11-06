@@ -47,7 +47,7 @@ test("photo caption about visual UI feedback selects general verified facts",asy
     topic:key.slice(10,-5),source_commit:sha,facts:["Verified general info"]
   })})}},"интерфейс не очень хороший");
   assert.equal(v.status,"ok");
-  assert.deepEqual(v.topics,["general"]);
+  assert.deepEqual(v.topics,["general","pwa"]);
 });
 
 test("current question and selected FAQ guide the R2 search; read closest second topic",async()=>{
