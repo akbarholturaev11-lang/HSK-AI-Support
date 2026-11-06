@@ -952,3 +952,31 @@ test("failed Telegram photo download is reported separately from AI uncertainty"
     assert.equal(tickets.size,0);
   }finally{globalThis.fetch=original;}
 });
+
+
+test("official support links stay clickable without Telegram preview cards", async () => {
+  const {env}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"Поддержка HSK AI."})})};
+  const oldFetch=globalThis.fetch, calls=[];
+  let id=9001;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),params:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:id++}});
+  };
+  const user={id:9000,language_code:"ru"};
+  try{
+    const start={update_id:9000,message:{chat:{id:9000,type:"private"},from:user,message_id:1,text:"/start"}};
+    const callback={update_id:9001,callback_query:{id:"qa-9001",from:user,
+      message:{chat:{id:9000,type:"private"},message_id:9001},data:"help:account"}};
+    const android={update_id:9002,message:{chat:{id:9000,type:"private"},from:user,message_id:2,text:"андроид"}};
+    assert.equal((await call(env,start)).status,200);
+    assert.equal((await call(env,callback)).status,200);
+    assert.equal((await call(env,android)).status,200);
+    const userMessages=calls.filter(c=>c.method==="sendMessage"&&c.params.chat_id===9000);
+    assert.equal(userMessages.length,3);
+    assert.ok(userMessages.every(m=>m.params.link_preview_options?.is_disabled===true));
+    assert.match(userMessages[2].params.text,/https:\/\/hskai\.app\/ru\/guide\/faq\//);
+    assert.ok(userMessages[0].params.reply_markup,"/start keeps buttons");
+    assert.equal(userMessages[2].params.reply_markup,undefined,"follow-up stays button-free");
+  } finally {globalThis.fetch=oldFetch;}
+});
