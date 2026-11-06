@@ -1,6 +1,7 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer } from "./ai.js";
+import { saveConversationExchange } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -274,6 +275,11 @@ async function handlePrivate(env, message) {
   const faq = explicitFaq(text, ctx.lang);
   if (faq) {
     await sendUser(env, user.id, faq);
+    // Keep account/login topic for the next one-word platform reply.
+    // Existing short-lived D1 memory is reused; no new table or external call.
+    if (faq === copy.account) {
+      await saveConversationExchange(env,user.id,text,faq);
+    }
     return;
   }
   if (shouldAvoidAi(text)) {
@@ -311,6 +317,10 @@ async function handleCallback(env, callback) {
   }
   const key = action.slice(5);
   await sendUser(env, callback.from.id, copy[key]);
+  if (key === "account") {
+    await saveConversationExchange(env, callback.from.id,
+      "Аккаунт ва кириш / Account login", copy.account);
+  }
 }
 
 async function handleAdmin(env, message) {
