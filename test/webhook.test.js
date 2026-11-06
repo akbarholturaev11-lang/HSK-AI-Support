@@ -115,7 +115,7 @@ test("deep link locale/source and deduplication; no HSK AI backend calls", async
   } finally { globalThis.fetch = original; }
 });
 
-test("without AI key, user escalation and operator reply both work", async () => {
+test("explicit /operator opens ticket and operator reply works", async () => {
   const { env, calls, tickets, links } = stub();
   let id = 400;
   const original = globalThis.fetch;
@@ -124,14 +124,14 @@ test("without AI key, user escalation and operator reply both work", async () =>
     return Response.json({ ok: true, result: { message_id: id++ } });
   };
   try {
-    const user = { update_id: 200, message: { chat: { id: 51, type: "private" }, from: { id: 51, language_code: "ru", first_name: "Test", username: "my_support_user" }, message_id: 55, text: "У меня пропала подписка" } };
+    const user = { update_id: 200, message: { chat: { id: 51, type: "private" }, from: { id: 51, language_code: "ru", first_name: "Test", username: "my_support_user" }, message_id: 55, text: "/operator" } };
     assert.equal((await call(env, user)).status, 200);
     assert.equal(tickets.size, 1);
     assert.equal(calls[0].chat_id, "-100234");
     assert.match(calls[0].text, /@my_support_user/);
     assert.match(calls[0].text, /<code>ru<\/code>/);
     assert.match(calls[0].text, /<code>\/close<\/code>/);
-    assert.match(calls[0].text, /<blockquote>У меня пропала подписка<\/blockquote>/);
+    assert.match(calls[0].text, /<blockquote>Оператор керак<\/blockquote>/);
     assert.doesNotMatch(calls[0].text, /Как ответить|Source:|Telegram:|ID:|Ticket #|Name:/);
     assert.equal(calls.length,2,"a newly opened ticket gets exactly one acknowledgement");
     assert.equal(calls[1].chat_id,51);
@@ -422,7 +422,8 @@ test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
     assert.equal((await call(env,update)).status,200);
     assert.equal(aiCalls,0);
     assert.equal(quotas.size,1,"only the user message rate limit is charged, not AI quota");
-    assert.ok(calls.some(x=>x.data.chat_id==="-100234"&&x.method==="sendMessage"));
+    assert.ok(!calls.some(x=>x.data.chat_id==="-100234"));
+    assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id===992&&/\/operator/.test(x.data.text)));
   }finally{globalThis.fetch=orig;}
 });
 
@@ -458,7 +459,7 @@ test("V2 technical primary failure attempts configured MiniMax and then answers"
   }finally{globalThis.fetch=orig;}
 });
 
-test("V2 payment proof image bypasses AI and reaches human operator",async()=>{
+test("V2 payment proof image never reaches AI or human without consent",async()=>{
   const {env}=stub();
   let aiCalls=0;
   env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
@@ -475,7 +476,8 @@ test("V2 payment proof image bypasses AI and reaches human operator",async()=>{
       message_id:9904,caption:"Вот чек оплаты",photo:[{file_id:"photo",file_size:100}]}};
     assert.equal((await call(env,update)).status,200);
     assert.equal(aiCalls,0);
-    assert.ok(tg.some(x=>x.method==="copyMessage"&&x.data.message_id===9904));
+    assert.ok(!tg.some(x=>x.method==="copyMessage"));
+    assert.ok(tg.some(x=>x.method==="sendMessage"&&x.data.chat_id===994&&/\/operator/.test(x.data.text)));
   }finally{globalThis.fetch=orig;}
 });
 
@@ -497,7 +499,8 @@ test("V2 refuses clearly Uzbek text when Tajik reply was required",async()=>{
   try{
     const update={update_id:9910,message:{chat:{id:9910,type:"private"},from:{id:9910,language_code:"ru"},message_id:10,text:"HSK AI чист?"}};
     assert.equal((await call(env,update)).status,200);
-    assert.equal(tickets.size,1,"incorrect-language answer must defer to operator");
+    assert.equal(tickets.size,0,"wrong language must not open ticket without consent");
+    assert.ok(calls.some(c=>c.method==="sendMessage"&&/\/operator/.test(c.data.text)));
     assert.ok(!calls.some(c=>c.method==="sendMessage" && /хитой тилини ўрганиш/.test(c.data.text)));
   }finally{globalThis.fetch=original;}
 });
@@ -520,7 +523,7 @@ test("V2 paid MiniMax cannot run without separate approval and a verified Gatewa
     const update={update_id:9920,message:{chat:{id:9920,type:"private"},from:{id:9920,language_code:"ru"},message_id:20,text:"Что такое HSK AI?"}};
     assert.equal((await call(env,update)).status,200);
     assert.deepEqual(attempts,["@cf/google/gemma-4-26b-a4b-it"],"never call paid provider without explicit billing approval");
-    assert.equal(tickets.size,1);
+    assert.equal(tickets.size,0);
   }finally{globalThis.fetch=original;}
 });
 
@@ -544,12 +547,13 @@ test("V2 blocks internal PWA config and personal payment status",async()=>{
     const unsafe={update_id:9980,message:{chat:{id:9980,type:"private"},from:{id:9980,language_code:"ru"},message_id:80,text:"PWA авторизация сейчас активна?"}};
     assert.equal((await call(env,unsafe)).status,200);
     assert.equal(aiCalls,1);
-    assert.equal(tickets.size,1);
+    assert.equal(tickets.size,0);
     assert.ok(!telegramCalls.some(x=>x.method==="sendMessage"&&String(x.data.text).includes("PWA_AUTH_ENABLED")));
     const payment={update_id:9981,message:{chat:{id:9981,type:"private"},from:{id:9981,language_code:"uz"},message_id:81,text:"Менинг тўлов чеким тасдиқланганми?"}};
     assert.equal((await call(env,payment)).status,200);
     assert.equal(aiCalls,1,"personal payment status must not reach AI");
-    assert.equal(tickets.size,2);
+    assert.equal(tickets.size,0);
+    assert.ok(telegramCalls.every(x=>x.data.chat_id!=="-100234"));
   }finally{globalThis.fetch=original;}
 });
 
@@ -565,12 +569,12 @@ test("V2 missing R2 binding fails closed instead of using stale local FACTS",asy
     const u={update_id:9990,message:{chat:{id:9990,type:"private"},from:{id:9990,language_code:"ru"},message_id:90,text:"Что такое HSK AI?"}};
     assert.equal((await call(env,u)).status,200);
     assert.equal(aiCalls,0);
-    assert.equal(tickets.size,1);
+    assert.equal(tickets.size,0);
   }finally{globalThis.fetch=orig;}
 });
 
 
-test("operator chat notifies only on ticket open and close; follow-ups remain silent", async () => {
+test("operator chat is explicitly opened, follows up silently and closes on admin /close", async () => {
   const {env,tickets,links}=stub();
   let nextId=500;
   const calls=[];
@@ -584,19 +588,20 @@ test("operator chat notifies only on ticket open and close; follow-ups remain si
     const userMessage=(update_id,message_id,field,value)=>({
       update_id,message:{chat:{id:601,type:"private"},from,message_id,[field]:value}
     });
-    assert.equal((await call(env,userMessage(600,91,"text","Приложение <не работает>"))).status,200);
+    assert.equal((await call(env,userMessage(600,90,"text","/operator"))).status,200);
+    assert.equal(tickets.size,1);
     assert.equal(calls.length,2);
     assert.equal(calls[0].method,"sendMessage");
     assert.equal(calls[0].data.parse_mode,"HTML");
-    assert.match(calls[0].data.text,/<blockquote>Приложение &lt;не работает&gt;<\/blockquote>/);
+    assert.match(calls[0].data.text,/<blockquote>Оператор керак<\/blockquote>/);
     assert.equal(links.get(500),1);
     assert.equal(calls[1].data.chat_id,601);
     assert.match(calls[1].data.text,/передано оператору/i);
-    assert.equal((await call(env,userMessage(601,92,"text","Вот новая ошибка"))).status,200);
+    assert.equal((await call(env,userMessage(601,91,"text","Приложение <не работает>"))).status,200);
     assert.equal(calls.length,3,"ongoing chat has no automatic message to user");
     assert.equal(calls[2].method,"copyMessage");
     assert.equal(calls[2].data.chat_id,"-100234");
-    assert.equal(calls[2].data.message_id,92);
+    assert.equal(calls[2].data.message_id,91);
     assert.equal(links.get(502),1);
     const photo={update_id:602,message:{chat:{id:601,type:"private"},from,message_id:93,caption:"Новый экран",photo:[{file_id:"test",file_size:100}]}};
     assert.equal((await call(env,photo)).status,200);
@@ -619,4 +624,95 @@ test("operator chat notifies only on ticket open and close; follow-ups remain si
     assert.match(calls[5].data.text,/закрыл обращение/i);
     assert.equal(calls[6].data.chat_id,"-100234");
   } finally { globalThis.fetch=original; }
+});
+
+
+test("buttons render only on /start, never on FAQ, topic callback, AI, or safe fallback", async () => {
+  const {env,tickets}=stub();
+  env.AI_MODEL="@cf/google/gemma-4-26b-a4b-it";
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"HSK AI помогает изучать китайский язык."})})};
+  const calls=[];
+  const original=globalThis.fetch;
+  let next=101;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),payload:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:next++}});
+  };
+  const user={id:812,language_code:"ru",username:"test_support"};
+  const send=async(id,text)=>call(env,{update_id:id,message:{chat:{id:812,type:"private"},from:user,message_id:id,text}});
+  try{
+    assert.equal((await send(8100,"/start")).status,200);
+    assert.equal(calls.filter(c=>c.method==="sendMessage").length,1);
+    assert.equal(calls[0].payload.reply_markup.inline_keyboard.length,2);
+    assert.equal((await call(env,{update_id:8101,callback_query:{
+      id:"callback8101",from:user,message:{message_id:101,chat:{id:812,type:"private"}},data:"help:payment"
+    }})).status,200);
+    assert.equal((await send(8102,"подписка")).status,200);
+    assert.equal((await send(8103,"Что такое HSK AI?")).status,200);
+    assert.equal((await send(8104,"qwertyqwerty нет такого раздела")).status,200);
+    assert.equal((await send(8105,"Мой чек подтверждает оплату?")).status,200);
+    assert.equal((await send(8106,"/help")).status,200);
+    const userMessages=calls.filter(c=>c.method==="sendMessage"&&c.payload.chat_id===812);
+    assert.equal(userMessages.length,7);
+    assert.ok(userMessages[0].payload.reply_markup);
+    for(const item of userMessages.slice(1)){
+      assert.equal(item.payload.reply_markup,undefined,"only /start may include menu buttons");
+    }
+    assert.ok(userMessages.some(c=>/\/operator/.test(c.payload.text)));
+    assert.equal(tickets.size,0,"FAQ/AI/fallback/personal payment must not create tickets");
+    assert.ok(!calls.some(c=>c.method==="sendMessage"&&c.payload.chat_id==="-100234"));
+  } finally {globalThis.fetch=original;}
+});
+
+test("repeated unknown messages never auto-open tickets; only /operator opens one",async()=>{
+  const {env,tickets}=stub();
+  const calls=[];
+  const original=globalThis.fetch; let next=600;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),payload:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:next++}});
+  };
+  const from={id:813,language_code:"ru",username:"supportuser"};
+  const send=async(id,text)=>call(env,{update_id:id,message:{chat:{id:813,type:"private"},from,message_id:id,text}});
+  try{
+    for(let i=0;i<3;i++){
+      assert.equal((await send(8200+i,"qwerty-unknown-"+i)).status,200);
+      assert.equal(tickets.size,0);
+    }
+    assert.equal(calls.filter(c=>c.method==="sendMessage"&&c.payload.chat_id===813).length,3);
+    assert.equal((await send(8203,"/operator")).status,200);
+    assert.equal(tickets.size,1);
+    assert.equal(calls.filter(c=>c.method==="sendMessage"&&c.payload.chat_id==="-100234").length,1);
+    assert.equal((await send(8204,"Еще один вопрос")).status,200);
+    assert.ok(calls.some(c=>c.method==="copyMessage"&&c.payload.message_id===8204));
+    assert.equal(calls.filter(c=>c.method==="sendMessage"&&c.payload.chat_id===813).length,4,
+      "only one opening notice, no active conversation delivery acknowledgement");
+  }finally{globalThis.fetch=original;}
+});
+
+test("/start returns from open operator ticket to AI and restores one menu",async()=>{
+  const {env,tickets}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"HSK AI помогает изучать китайский язык."})})};
+  const calls=[];
+  const original=globalThis.fetch;let next=1500;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:next++}});
+  };
+  const from={id:814,language_code:"ru",username:"returnuser"};
+  const send=async(id,text)=>call(env,{update_id:id,message:{chat:{id:814,type:"private"},from,message_id:id,text}});
+  try{
+    assert.equal((await send(8300,"/operator")).status,200);
+    assert.equal(tickets.get(1).status,"open");
+    const before=calls.length;
+    assert.equal((await send(8301,"/start")).status,200);
+    assert.equal(tickets.get(1).status,"closed");
+    assert.equal(calls.length,before+2,"admin is informed once; user gets one menu");
+    assert.match(calls.at(-1).data.text,/Здравствуйте/);
+    assert.ok(calls.at(-1).data.reply_markup?.inline_keyboard);
+    const last=calls.length;
+    assert.equal((await send(8302,"Что такое HSK AI?")).status,200);
+    assert.ok(calls.slice(last).some(x=>x.method==="sendMessage"&&x.data.chat_id===814&&/помогает/.test(x.data.text)));
+    assert.ok(!calls.slice(last).some(x=>x.method==="copyMessage"&&x.data.chat_id==="-100234"));
+  }finally{globalThis.fetch=original;}
 });
