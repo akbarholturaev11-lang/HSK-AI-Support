@@ -174,7 +174,7 @@ test("AI shows typing before model call and sends a brief answer", async () => {
       assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
       const body = JSON.parse(init.body);
       assert.equal(body.max_tokens, 300);
-      assert.match(body.messages[0].content, /1–3 short sentences/);
+      assert.match(body.messages[0].content, /Read the recent dialogue/);
       return Response.json({ choices: [{ message: { content: JSON.stringify({
         action: "answer",
         answer: "HSK AI помогает изучать китайский язык."
@@ -235,7 +235,7 @@ test("Cloudflare Workers AI binding answers briefly, without external AI API key
     assert.equal(aiCalls.length, 1);
     assert.equal(aiCalls[0].model, "@cf/google/gemma-4-26b-a4b-it");
     assert.deepEqual(aiCalls[0].request.chat_template_kwargs, { enable_thinking: false });
-    assert.match(aiCalls[0].request.messages[0].content, /Cyrillic script/);
+    assert.match(aiCalls[0].request.messages[0].content, /Reply naturally and briefly in Russian/);
     assert.ok(calls.some(x => x.method === "sendMessage" && x.body.text === "HSK AI помогает учить китайский язык."));
     assert.equal(calls.filter(x=>x.method==="sendMessage").length, 1);
   } finally { globalThis.fetch = original; }
@@ -669,7 +669,7 @@ test("buttons render only on /start, never on FAQ, topic callback, AI, or safe f
     assert.equal((await send(8105,"Мой чек подтверждает оплату?")).status,200);
     assert.equal((await send(8106,"/help")).status,200);
     const userMessages=calls.filter(c=>c.method==="sendMessage"&&c.payload.chat_id===812);
-    assert.equal(userMessages.length,7);
+    assert.equal(userMessages.length,6);
     assert.ok(userMessages[0].payload.reply_markup);
     for(const item of userMessages.slice(1)){
       assert.equal(item.payload.reply_markup,undefined,"only /start may include menu buttons");
@@ -799,7 +799,7 @@ test("AI outage keeps Uzbek greeting natural without a product-KB fallback loop"
 test("account menu then Android preserves sign-in context and offers localized official FAQ",async()=>{
   const {env,conversations,quotas}=stub();
   let modelCalls=0;
-  env.AI={run:async()=>{modelCalls++;return {response:'{"action":"answer","answer":"Скачайте приложение."}'}}};
+  env.AI={run:async(_model,request)=>{modelCalls++;assert.ok(request.messages.some(m=>String(m.content).includes("FAQ selected: account")));return {response:JSON.stringify({action:"answer",answer:"Проверьте способ входа на Android: Google или Telegram?"})}}};
   const previous=globalThis.fetch;
   const calls=[];let id=4501;
   globalThis.fetch=async(url,init)=>{
@@ -815,13 +815,12 @@ test("account menu then Android preserves sign-in context and offers localized o
     assert.equal(conversations.length,2);
     const follow={update_id:4502,message:{chat:{id:4500,type:"private"},from:user,message_id:2,text:"андроид"}};
     assert.equal((await call(env,follow)).status,200);
-    assert.equal(modelCalls,0,"platform clarification must not waste AI call");
+    assert.equal(modelCalls,1,"AI receives FAQ context rather than a one-off template");
     const last=calls.filter(x=>x.method==="sendMessage").at(-1).payload;
-    assert.match(last.text,/Проблема со входом/);
-    assert.match(last.text,/https:\/\/hskai\.app\/ru\/guide\/faq\//);
+    assert.match(last.text,/проблема со входом/i);
     assert.doesNotMatch(last.text,/скача|загруз/ui);
     assert.equal(last.reply_markup,undefined);
-    assert.equal(quotas.has("ai-user:4500:"+new Date().toISOString().slice(0,10)),false);
+    assert.equal(quotas.has("ai-user:4500:"+new Date().toISOString().slice(0,10)),true);
   } finally {globalThis.fetch=previous;}
 });
 
@@ -863,13 +862,14 @@ test("new /start or different FAQ topic clears stale account-only follow-up",asy
     assert.equal((await option(6162,"help:account")).status,200);
     assert.equal(conversations.length,2);
     assert.equal((await start(6163)).status,200);
-    assert.equal(conversations.length,0);
+    assert.equal(conversations.length,2,"new start is stored for AI");
     assert.equal((await reply(6164,"андроид")).status,200);
     assert.equal(aiCalls,1,"fresh start must not reuse old account follow-up");
     assert.equal((await option(6165,"help:account")).status,200);
     assert.equal(conversations.length>=2,true);
     assert.equal((await option(6166,"help:payment")).status,200);
-    assert.equal(conversations.length,0,"switching FAQ topic clears former account context");
+    assert.equal(conversations.length,2,"new payment FAQ replaces account context");
+    assert.match(conversations[0].text,/FAQ selected: payment/);
   }finally{globalThis.fetch=old;}
 });
 
@@ -956,7 +956,7 @@ test("failed Telegram photo download is reported separately from AI uncertainty"
 
 test("official support links stay clickable without Telegram preview cards", async () => {
   const {env}=stub();
-  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"Поддержка HSK AI."})})};
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"Помощь со входом на Android: что именно не работает?"})})};
   const oldFetch=globalThis.fetch, calls=[];
   let id=9001;
   globalThis.fetch=async(url,init)=>{
@@ -973,11 +973,11 @@ test("official support links stay clickable without Telegram preview cards", asy
     assert.equal((await call(env,callback)).status,200);
     assert.equal((await call(env,android)).status,200);
     const userMessages=calls.filter(c=>c.method==="sendMessage"&&c.params.chat_id===9000);
-    assert.equal(userMessages.length,3);
+    assert.equal(userMessages.length,2,"FAQ selection adds context but no chat bubble");
     assert.ok(userMessages.every(m=>m.params.link_preview_options?.is_disabled===true));
-    assert.match(userMessages[2].params.text,/https:\/\/hskai\.app\/ru\/guide\/faq\//);
+    assert.match(userMessages[1].params.text,/помощь|поддержка/i);
     assert.ok(userMessages[0].params.reply_markup,"/start keeps buttons");
-    assert.equal(userMessages[2].params.reply_markup,undefined,"follow-up stays button-free");
+    assert.equal(userMessages[1].params.reply_markup,undefined,"follow-up stays button-free");
   } finally {globalThis.fetch=oldFetch;}
 });
 
@@ -985,7 +985,13 @@ test("official support links stay clickable without Telegram preview cards", asy
 test("Uzbek guide, iPhone link and resend requests are answered without repetitive fallback", async()=>{
   const {env,tickets}=stub();
   let modelCalls=0, nextId=8400;
-  env.AI={run:async()=>{modelCalls++;return {response:JSON.stringify({action:"answer",answer:"Модель жавоби"})}}};
+  env.AI={run:async(_model,req)=>{modelCalls++;
+    const last=String(req.messages.at(-1)?.content||"");
+    const answer=last.includes("йўриқномасини")
+      ? {action:"answer",answer:"HSK AI йўриқномасини шу ердан кўринг:"}
+      : {action:"handoff",answer:""};
+    return {response:JSON.stringify(answer)};
+  }};
   const calls=[],orig=globalThis.fetch;
   globalThis.fetch=async(url,init)=>{
     calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
@@ -1000,10 +1006,11 @@ test("Uzbek guide, iPhone link and resend requests are answered without repetiti
     const messages=calls.filter(x=>x.method==="sendMessage").map(x=>x.data.text);
     assert.equal(messages.length,3);
     assert.match(messages[0],/hskai\.app\/uz\/guide\/faq/);
-    assert.match(messages[1],/https:\/\/hskai\.app/);
-    assert.match(messages[2],/https:\/\/hskai\.app/);
+    assert.match(messages[1],/Билимлар базамда/);
+    assert.match(messages[2],/Билимлар базамда/);
+    assert.ok(!messages.slice(1).some(m=>/https:\/\/hskai\.app\s*$/m.test(m)),"home URL is not an iPhone app deep-link");
     assert.ok(messages.every(m=>!m.includes("HSK AI ҳақидаги саволингизни аниқроқ ёзинг")));
-    assert.equal(modelCalls,0,"verified simple links should not waste any model tokens");
+    assert.equal(modelCalls,3,"AI sees the conversation and chooses whether information is verified");
     assert.equal(tickets.size,0);
   }finally{globalThis.fetch=orig;}
 });
