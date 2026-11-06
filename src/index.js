@@ -395,7 +395,10 @@ export default {
       const now = Math.floor(Date.now() / 1000);
       await env.DB.batch([
         env.DB.prepare("DELETE FROM processed_updates WHERE created_at < ?").bind(now - 7 * 86400),
-        env.DB.prepare("DELETE FROM quotas WHERE day < ?").bind(dayKey(Date.now() - 3 * 86400000)),
+        env.DB.prepare("DELETE FROM quotas WHERE scope != 'backup-cent-monthly' AND day < ?")
+          .bind(dayKey(Date.now() - 3 * 86400000)),
+        env.DB.prepare("DELETE FROM quotas WHERE scope = 'backup-cent-monthly' AND day < ?")
+          .bind(new Date(Date.now() - 65 * 86400000).toISOString().slice(0, 7)),
         env.DB.prepare("DELETE FROM tickets WHERE updated_at < ?").bind(now - 90 * 86400),
         env.DB.prepare("DELETE FROM support_context WHERE updated_at < ?").bind(now - 3600),
         env.DB.prepare("DELETE FROM admin_links WHERE ticket_id NOT IN (SELECT id FROM tickets)")
