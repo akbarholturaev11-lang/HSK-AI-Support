@@ -108,8 +108,8 @@ async function forwardToOperator(env, user, ctx, message = null) {
   const username = /^[A-Za-z0-9_]{3,32}$/.test(String(user.username || "")) ?
     user.username : null;
   const usernameLine = username ?
-    "\\nTelegram: <a href=\"https://t.me/" + username + "\">@" + username + "</a>" :
-    "\\nTelegram: username not set";
+    "\nTelegram: <a href=\"https://t.me/" + username + "\">@" + username + "</a>" :
+    "\nTelegram: username not set";
   const header = "<b>📨 HSK AI Support #" + ticket.id + "</b>" +
     "\nID: <code>" + user.id + "</code>" +
     usernameLine +
