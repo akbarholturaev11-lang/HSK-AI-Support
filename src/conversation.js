@@ -47,3 +47,14 @@ export async function saveConversationExchange(env, userId, question, answer, no
     return false;
   }
 }
+
+
+export async function clearConversationContext(env,userId) {
+  if (!env.DB) return false;
+  try {
+    await env.DB.prepare("DELETE FROM ai_conversation WHERE tg_id=?").bind(userId).run();
+    return true;
+  } catch {
+    return false;
+  }
+}
