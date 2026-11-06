@@ -21,7 +21,7 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 
 - Worker: hsk-ai-support
 - D1: hsk-ai-support (DB binding; SQL schema already initialized)
-- AI: native Cloudflare Workers AI, multilingual GLM-4.7-Flash model
+- AI: native Cloudflare Workers AI, Gemma 4 26B A4B model with thinking disabled
 - Worker origin: https://hsk-ai-support.hskaiiapp.workers.dev
 - Cron: 5-minute webhook setup checks plus daily cleanup at 03:00 UTC
 - Random WEBHOOK_SECRET already generated and stored securely on Cloudflare. Do not overwrite unnecessarily.
