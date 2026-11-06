@@ -25,3 +25,7 @@ crons = ["*/5 * * * *", "0 3 * * *"]
 binding = "DB"
 database_name = "hsk-ai-support"
 database_id = "4185e7cc-260a-4931-abdb-426bd6f21cfb"
+
+[[r2_buckets]]
+binding = "KB"
+bucket_name = "hsk-ai-support-kb"
