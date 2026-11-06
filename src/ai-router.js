@@ -85,7 +85,7 @@ export async function answerWithAi(env, lang, question, history, knowledge) {
   if (!backupEnabled(env) || !await reserveBackupBudget(env)) return null;
   try {
     const result = await env.AI.run(env.MINIMAX_MODEL || BACKUP_MODEL, {
-      messages, max_tokens: 512, temperature: 0.1
+      messages, max_completion_tokens: 512, reasoning_effort: "low", temperature: 0.1
     }, gateway);
     const decision = parseAiDecision(modelText(result));
     return decision?.action === "answer" ? decision.answer : null;
