@@ -34,3 +34,11 @@ CREATE TABLE IF NOT EXISTS service_settings (
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Short-lived sanitized 5-message support context (no secrets, no raw long histories).
+CREATE TABLE IF NOT EXISTS support_context (
+  tg_id INTEGER PRIMARY KEY,
+  turns_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_support_context_updated_at ON support_context(updated_at);

@@ -16,6 +16,13 @@ binding = "AI"
 
 [vars]
 AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+AI_GATEWAY_ID = "hsk-ai-support"
+# Do NOT enable paid MiniMax backup without explicit owner approval and a funded gateway.
+MINIMAX_BACKUP_ENABLED = "false"
+BACKUP_BILLING_APPROVED = "false"
+# The named gateway currently has model-filtered $0.20/24h and $3/30d spend limits.
+# Gateway spend limits are not a guarantee against all provider billing edge cases.
+GATEWAY_SPEND_LIMITS_CONFIRMED = "true"
 PUBLIC_WORKER_ORIGIN = "https://hsk-ai-support.hskaiiapp.workers.dev"
 
 [triggers]

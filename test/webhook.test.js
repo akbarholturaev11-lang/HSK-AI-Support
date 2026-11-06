@@ -75,7 +75,10 @@ function stub() {
     }
   }; } }; } };
   return {
-    env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake" },
+    env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake",
+      KB: { async get(key) { const topic = key.match(/knowledge\/(\w+)\.json/)?.[1]; return topic ? { json: async () => ({
+        topic, source_commit: "a".repeat(40), facts: ["HSK AI is a Chinese language learning product.", "Support is in Uzbek, Russian and Tajik."]
+      }) } : null; } } },
     calls, users, tickets, links, settings
   };
 }
@@ -140,44 +143,35 @@ test("without AI key, user escalation and operator reply both work", async () =>
 });
 
 
-test("AI shows typing before model call and sends a brief answer", async () => {
+test("R2-grounded AI shows typing before generation and sends a short answer", async () => {
   const { env } = stub();
-  env.AI_API_KEY = "test-only-key";
   const calls = [];
-  let typingCalls = 0;
+  env.AI = {
+    async run(model, request, options) {
+      assert.ok(calls.some(c => c.method === "sendChatAction"), "typing before model inference");
+      assert.equal(model, "fake");
+      assert.match(request.messages[0].content, /ONLY source of product claims/);
+      assert.match(request.messages[0].content, /Chinese language learning product/);
+      assert.equal(request.max_tokens, 160);
+      assert.equal(options.gateway.id, "default");
+      return { response: JSON.stringify({ action: "answer", answer: "HSK AI помогает изучать китайский язык." }) };
+    }
+  };
   const original = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
-    if (String(url).includes("api.openai.com")) {
-      assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
-      const body = JSON.parse(init.body);
-      assert.equal(body.max_tokens, 160);
-      assert.match(body.messages[0].content, /1 or 2 short sentences/);
-      return Response.json({ choices: [{ message: { content: JSON.stringify({
-        action: "answer",
-        answer: "HSK AI помогает изучать китайский язык."
-      }) } }] });
-    }
     const method = String(url).split("/").pop();
     calls.push({ method, body: JSON.parse(init.body) });
-    if (method === "sendChatAction") typingCalls++;
     return Response.json({ ok: true, result: { message_id: 800 } });
   };
   try {
-    const user = {
-      update_id: 300,
-      message: { chat: { id: 71, type: "private" }, from: { id: 71, language_code: "ru" },
-        message_id: 3, text: "Для чего нужен HSK AI?" }
-    };
+    const user = { update_id: 300, message: { chat: { id: 71, type: "private" },
+      from: { id: 71, language_code: "ru" }, message_id: 3, text: "Для чего нужен HSK AI?" } };
     assert.equal((await call(env, user)).status, 200);
     assert.equal(calls[0].method, "sendChatAction");
-    assert.equal(calls[0].body.action, "typing");
-    assert.equal(calls[0].body.chat_id, 71);
-    assert.equal(calls.at(-1).method, "sendMessage");
     assert.equal(calls.at(-1).body.text, "HSK AI помогает изучать китайский язык.");
-    assert.equal(calls.at(-1).body.chat_id, 71);
+    assert.equal(calls.filter(c => c.method === "sendMessage").length, 1);
   } finally { globalThis.fetch = original; }
 });
-
 
 test("Cloudflare Workers AI binding answers briefly, without external AI API key", async () => {
   const { env } = stub();
@@ -212,7 +206,7 @@ test("Cloudflare Workers AI binding answers briefly, without external AI API key
     assert.equal(aiCalls.length, 1);
     assert.equal(aiCalls[0].model, "@cf/google/gemma-4-26b-a4b-it");
     assert.deepEqual(aiCalls[0].request.chat_template_kwargs, { enable_thinking: false });
-    assert.match(aiCalls[0].request.messages[0].content, /Cyrillic script/);
+    assert.match(aiCalls[0].request.messages[0].content, /Cyrillic/);
     assert.ok(calls.some(x => x.method === "sendMessage" && x.body.text === "HSK AI помогает учить китайский язык."));
     assert.equal(calls.filter(x=>x.method==="sendMessage").length, 1);
   } finally { globalThis.fetch = original; }
@@ -354,4 +348,33 @@ test("ticket with no Telegram username retains user ID and safe fallback", async
     assert.match(calls[0].text, /Telegram: username not set/);
     assert.match(calls[0].text, /ID: <code>108<\/code>/);
   } finally { globalThis.fetch = previous; }
+});
+
+test("V2 allows 20 AI answers per day, while FAQ messages remain unlimited", async () => {
+  const { env, tickets } = stub();
+  let aiCalls = 0;
+  env.AI = { async run() {
+    aiCalls++;
+    return { response: JSON.stringify({ action:"answer", answer:"HSK AI помогает изучать китайский язык." }) };
+  } };
+  const outgoing = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    outgoing.push({ method:String(url).split("/").pop(), body:JSON.parse(init.body) });
+    return Response.json({ ok:true, result:{ message_id: 1000 + outgoing.length } });
+  };
+  const make = (id, userId, text) => ({ update_id:id, message:{
+    chat:{id:userId,type:"private"}, from:{id:userId,language_code:"ru"},
+    message_id:id, text
+  } });
+  try {
+    for (let i=0;i<21;i++)
+      assert.equal((await call(env, make(5000+i,333,"Что такое HSK AI?"))).status,200);
+    assert.equal(aiCalls,20, "only twenty AI calls per user in one day");
+    assert.equal(tickets.size,1, "the over-limit request is handed to one operator ticket");
+    for (let i=0;i<65;i++)
+      assert.equal((await call(env, make(6000+i,444,"подписка"))).status,200);
+    assert.equal(outgoing.filter(x=>x.method==="sendMessage" && x.body.chat_id===444).length,65,
+      "fixed FAQ is not restricted by the AI quota or legacy message quota");
+  } finally { globalThis.fetch = original; }
 });
