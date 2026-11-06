@@ -49,11 +49,9 @@ function decide(output) {
 
 async function primaryProvider(env, messages, imageDataUrl) {
   if (env.AI) {
-    // The top-level image field is supported by Cloudflare's vision binding
-    // pattern; the OpenAI-compatible message part is used for multimodal models.
+    // Both selected models use OpenAI-compatible image_url message parts.
     return env.AI.run(env.AI_MODEL || PRIMARY_MODEL, {
       messages,
-      ...(imageDataUrl ? { image:imageDataUrl } : {}),
       max_tokens:160,
       temperature:0.1,
       chat_template_kwargs:{enable_thinking:false}
@@ -84,8 +82,7 @@ async function backupProvider(env,messages,imageDataUrl,claimQuota) {
     const model = useRoute ? "dynamic/" + configuredRoute : (env.BACKUP_MODEL || BACKUP_MODEL);
     const options = useRoute ? { gateway:{ id:String(env.AI_GATEWAY_ID) } } : undefined;
     const response=await env.AI.run(model,{
-      messages,max_completion_tokens:768,reasoning_effort:"low",
-      ...(imageDataUrl ? {image:imageDataUrl}: {})
+      messages,max_completion_tokens:768,reasoning_effort:"low"
     },options);
     return decide(response);
   }catch {
