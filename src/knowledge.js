@@ -29,7 +29,7 @@ const TERMS = {
   ],
   telegram: [
     /telegram/u, /телеграм/u, /\bbot\b/u, /бот/u, /mini app/u, /мини апп/u,
-    /miniapp/u, /реферал/u, /referral/u
+    /miniapp/u, /канал/u, /channel/u, /новост/u, /янгил/u, /хабар/u, /ахбор/u, /реферал/u, /referral/u
   ],
   general: [
     /instagram/u, /инстаграм/u, /tiktok/u, /тикток/u, /youtube/u, /ютуб/u, /ютюб/u, /соцсет/u, /ижтимоий/u, /сайт/u, /website/u,
