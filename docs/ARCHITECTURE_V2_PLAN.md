@@ -78,6 +78,9 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 ## 5. AI fallback, нарх ва хавфсизлик
 
+**Қабул қилинган billing танлови (Q6):** MiniMax M3.1 Flash захира модели учун Cloudflare AI Gateway **Unified Billing** (A варианти). Фойдаланувчи аниқ тасдиқлади; BYOK танланмади. Сарф лимити алоҳида Q7'да келишилади. Auto top-up OFF, бюджет сигналлари, сарф аудити ва fallback тестларидан олдин пуллик endpoint production'га уланмайди. Бу танлов ҳозирча Cloudflare'да кредит харид қилиш ёки billing'ни ёқишни англатмайди.
+
+
 **Захира модель фойдаланувчи танлови билан аниқланди (Q5):** MiniMax M3.1 Flash. Cloudflare Unified API model ID: `minimax/m3.1-flash`; MiniMax direct API ID: `MiniMax-M3.1-Flash`. Cloudflare расмий каталогида 2026-11-06 кўрсатилган нарх: input $0.15/M, output $0.60/M, cached input $0.015/M. Модель always-on reasoning қилади, шу сабаб паст effort, 220 белгили жавоб, timeout ва тил сифати текширилмагунча production'га уланмайди. API калити ва billing ҳали йўқ. Манба: https://developers.cloudflare.com/ai/models/minimax/m3.1-flash/
 
 
@@ -121,8 +124,8 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q4 (ЕЧИЛГАН) | Биринчи KB қамрови | 7 та бўлим R2’да яратилди: payments, subscriptions, accounts, android, pwa, telegram, general. |
 | Q17 (ЕЧИЛГАН) | R2'дан файл танлаш | **A — Worker'да keyword→topic map, максимум 1–2 English файл.** Фойдаланувчи аниқ танлади. |
 | Q5 (ЕЧИЛГАН) | Захира AI модели | **MiniMax M3.1 Flash** танланди. Cloudflare Gateway model ID `minimax/m3.1-flash`; direct MiniMax API model ID `MiniMax-M3.1-Flash`. Нархи (2026-11-06): $0.15/1M input, $0.60/1M output. Reasoning доимий: паст effort/timeout ва RU/TJ/UZ тестлари керак. Пуллик API ҳали уланмаган. |
-| Q6 (ОЧИҚ) | MiniMax захира API учун ҳисоб-китоб | **A (тавсия): Cloudflare Unified Billing**, ягона Dashboard, credit top-up, auto top-up OFF, gateway spend limits; кредитга +5% fee ва камдан-кам ҳолларда negative balance пайдо бўлиши мумкин. **B:** MiniMax BYOK, провайдер ҳисоб-китоби ва калити алоҳида. Ҳозир тўлов йўқ. |
-| Q7 | Захира учун кунлик ва ойлик максимал бюджет қанча? | Бошланғич таклиф $0.20/кун ва $3/ой. |
+| Q6 (ЕЧИЛГАН) | MiniMax захира API ҳисоб-китоби | **A — Cloudflare Unified Billing**, фойдаланувчи аниқ тасдиқлади. Cloudflare Dashboard орқали бошқариш, auto top-up OFF ва budget alert/limit; 5% кредит қўшимча ҳақи эҳтимоли ҳисобга олинади. Billing ҳали фаоллаштирилмаган, кредит сотиб олинмаган. |
+| Q7 (МУҲОКАМАДА) | MiniMax захира AI харажатининг чеклови | **A (тавсия):** $0.20/кун ва $3/ой; **B:** $0.50/кун ва $10/ой; **C:** $1/кун ва $20/ой. Ойлик лимит устувор; дастурий лимитни billing hard cap деб ҳисобламаймиз. Ҳозир тўлов йўқ. |
 | Q8 | AI сўров лимити: ҳозир 3/user ва 60/global — янги меъёр қанча? | 5/user/кун, глобал Neuron ва бюджет билан назорат. |
 | Q9 | Охирги user хабарларидан контекст сақлаймизми? | Масалан, 30 дақиқагача 2–3 хабар, автоматик ўчириш, PIIсиз. |
 | Q10 | Агар main кодда user-visible ўзгариш билан production deploy ўртасида фарқ бўлса, агент нимани 'актив' деб ҳисоблайди? | Фақат ишончли deploy далили бор фактни фаол деб белгилайди, шубҳали фактга тегмайди. |
@@ -133,7 +136,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q15 | Янги AI провайдер учун мослик чегараси қандай? | Gateway/compatible API — config only; native incompatible API — adapter. |
 | Q16 | RU/TJ/UZ сифати ва тўлов FAQ жавобларини ким қабул қилади? | Owner 10 та real савол × 3 тил билан тасдиқлайди. |
 
-**ЕЧИЛГАН:** Q1–Q5, Q17 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q6 — MiniMax API тўлов ва credentials усули, кейин Q7–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
+**ЕЧИЛГАН:** Q1–Q6, Q17 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q7 — захира API бюджети, кейин Q8–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
 
 ## 9. Ҳозир бажарилмайдиган ишлар
 
