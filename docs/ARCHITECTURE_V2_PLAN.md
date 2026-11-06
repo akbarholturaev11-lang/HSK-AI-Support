@@ -121,7 +121,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q4 (ЕЧИЛГАН) | Биринчи KB қамрови | 7 та бўлим R2’да яратилди: payments, subscriptions, accounts, android, pwa, telegram, general. |
 | Q17 (ЕЧИЛГАН) | R2'дан файл танлаш | **A — Worker'да keyword→topic map, максимум 1–2 English файл.** Фойдаланувчи аниқ танлади. |
 | Q5 (ЕЧИЛГАН) | Захира AI модели | **MiniMax M3.1 Flash** танланди. Cloudflare Gateway model ID `minimax/m3.1-flash`; direct MiniMax API model ID `MiniMax-M3.1-Flash`. Нархи (2026-11-06): $0.15/1M input, $0.60/1M output. Reasoning доимий: паст effort/timeout ва RU/TJ/UZ тестлари керак. Пуллик API ҳали уланмаган. |
-| Q6 | Захира тўлови Gateway Unified Billing’ми ёки BYOK API калитими? | BYOK, агар provider hard spending limit бор бўлса; қулайликни ҳам солиштириш. |
+| Q6 (ОЧИҚ) | MiniMax захира API учун ҳисоб-китоб | **A (тавсия): Cloudflare Unified Billing**, ягона Dashboard, credit top-up, auto top-up OFF, gateway spend limits; кредитга +5% fee ва камдан-кам ҳолларда negative balance пайдо бўлиши мумкин. **B:** MiniMax BYOK, провайдер ҳисоб-китоби ва калити алоҳида. Ҳозир тўлов йўқ. |
 | Q7 | Захира учун кунлик ва ойлик максимал бюджет қанча? | Бошланғич таклиф $0.20/кун ва $3/ой. |
 | Q8 | AI сўров лимити: ҳозир 3/user ва 60/global — янги меъёр қанча? | 5/user/кун, глобал Neuron ва бюджет билан назорат. |
 | Q9 | Охирги user хабарларидан контекст сақлаймизми? | Масалан, 30 дақиқагача 2–3 хабар, автоматик ўчириш, PIIсиз. |
