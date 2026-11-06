@@ -463,3 +463,26 @@ test("V2 payment proof image bypasses AI and reaches human operator",async()=>{
     assert.ok(tg.some(x=>x.method==="copyMessage"&&x.data.message_id===9904));
   }finally{globalThis.fetch=orig;}
 });
+
+
+test("V2 refuses clearly Uzbek text when Tajik reply was required",async()=>{
+  const {env,tickets}=stub();
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["HSK AI helps learn Chinese."]})})};
+  env.AI={run:async(model,payload)=>{
+    assert.match(payload.messages[0].content,/MANDATORY REPLY LANGUAGE: Tajik/);
+    return {response:JSON.stringify({action:"answer",answer:"HSK AI — бу хитой тилини ўрганиш иловаси."})};
+  }};
+  const calls=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:1002+calls.length}});
+  };
+  try{
+    const update={update_id:9910,message:{chat:{id:9910,type:"private"},from:{id:9910,language_code:"ru"},message_id:10,text:"HSK AI чист?"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(tickets.size,1,"incorrect-language answer must defer to operator");
+    assert.ok(!calls.some(c=>c.method==="sendMessage" && /хитой тилини ўрганиш/.test(c.data.text)));
+  }finally{globalThis.fetch=original;}
+});
