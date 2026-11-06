@@ -57,13 +57,24 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Реал ҳолат:** Cloudflare R2 фаол. `hsk-ai-support-kb` private bucket (Standard, EEUR) яратилган, `knowledge/sync_state.json` бошланғич ҳолатда ёзилган (`last_checked_sha: null`). Cloudflare Support Worker'да `KB` binding бор. Биринчи baseline main SHA `c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073` асосида 7 та English KB JSON яратилди, ҳар бири R2'га ёзилди ва қайта ўқиб текширилди. `knowledge/sync_state.json` ушбу SHA билан `synced` бўлди. Кейинги **режали** автоном цикл ҳали алоҳида тасдиқланмаган.
 
-## 4. Қидирув — энг енгил MVP
+## 4. R2 билимларини AI жавобларига улаш — ҲАЛИ АМАЛГА ОШИРИЛМАГАН
 
-- Аниқ FAQ/меню жавобларига AI ёки R2 чақирилмайди.
-- User матнидан keyword/tag билан соҳани топиш; D1 индексдан 1–3 мос approved файл танлаш.
-- Worker фақат шу R2 файлларни ўқийди; AI’га user саволи, танланган English фактлар ва чиқиш тили берилади.
-- Мос ҳужжат йўқ, эски ёки зид фактлар бор — AI тахмин қилмайди, операторга ўтади.
-- Бошланғич версияда Vectorize, embedding, AI Search, алоҳида RAG сервери йўқ. D1 full-text/FTS5 имкони алоҳида синовдан кейин керак бўлса қўшилади.
+**Реал ҳолат:** private `hsk-ai-support-kb` bucket'да 7 та English topic JSON бор ва Worker'да `KB` binding мавжуд. Лекин ҳозирги `src/index.js` да `askAi()` R2'дан маълумот ўқимайди: AI ҳали код ичидаги умумий `FACTS` билан ишлайди. **R2'га улангани AI ундан фойдаланяпти дегани эмас.**
+
+Кейинги код босқичи:
+1. Фойдаланувчининг саволини ва мавжуд кириш манбасини ўқиш; аниқ FAQ бўлса AI/R2 чақирмасдан жавоб бериш.
+2. Мос мавзуни аниқлаш. Бошланғич 7 та JSON учун енгил мавзули keyword map етади; ҳар сўровда катта index/embedding/алохида AI classifier шарт эмас.
+3. Worker `env.KB.get("knowledge/{topic}.json")` орқали 1 ёки зарур бўлса 2 та English файлни ўқийди. Керакли файл йўқ ёки манба аниқ бўлмаса — operator ticket, фактни ўйлаб топиш йўқ.
+4. Фақат танланган, хавфсиз фактларни AI'га контекст қилиб узатади. Жавоб фойдаланувчи ёзган тилда, 1–2 қисқа жумла бўлади.
+5. Мавзу қидириш ортиқча хатолар берса ёки KB катталашса, кейин D1 keyword index вариантга ўтиш мумкин. Ҳозирча D1 тикет ва лимит вазифасида қолади.
+6. Релиздан олдин test: тўлов/аккаунт/Android/PWA/Telegram мавзулари, KB R2 хато, AI fallback, 3 тил, operator Reply ва /close. Хавфсиз rollback.
+
+**Q17 — Файл танлаш усули (биринчи муҳокама):**
+- A (ТАВСИЯ): Worker'да оддий keyword→topic map, 7 та бўлимдан 1–2 файлини ўқиш. Энг содда ва арзон, ҳозирги кўламга мос.
+- B: D1 index орқали keyword/tag қидириш, 1–3 файл. KB ўсса фойдали; ҳозир ортиқча мураккаблик.
+- C: AI аввал қайси файл кераклигини танлайди. Тилни тушуниши кучли, аммо қўшимча AI чақируви, латентлик ва харажат бор.
+
+**Келишув қоидаси:** Муҳокама пайтида сен саволга жавоб бермасдан кейингисига ўтсанг, тавсия қилинган вариант **режада қабул қилинган default** деб қайд этилади. Фикрингни кейин ўзгартиришинг мумкин. Бу қоида **пуллик API billing, махфий калит, production deploy ёки бошқа таъсирли ҳаракатга ўз-ўзидан рухсат** ҳисобланмайди.
 
 ## 5. AI fallback, нарх ва хавфсизлик
 
@@ -82,7 +93,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Phase 1 — universal AI router:** Gateway route, модели алмаштириш, paid backup, privacy/budget, error/fallback simulation; Cloudflare free квотаси воқеий текширилади. Фақат синовдан сўнг release.
 
-**Phase 2 — R2 Knowledge:** private R2 bucket ва Worker KB binding яратилди; English topic JSON'ларни агент тўлдиради, зарур D1 индекс ва Support Worker retrieval'ни кейин улаймиз. GitHub Actions pipeline талаб қилинмайди.
+**Phase 2 — R2 → AI integration:** R2 private bucket, 7 English topic JSON ва Worker `KB` binding тайёр. Worker’га 1–2 мос файлни танлаб ўқиш, AI'га grounded context бериш ва ишончсиз ҳолатда operator’га ўтиш кодини алоҳида қўшиш керак. Ҳозир бунда implementation йўқ. GitHub Actions pipeline талаб қилинмайди.
 
 **Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда Cloudflare R2 API орқали ёзади. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ. Агент schedule'и фаол; дастлабки KB синхронизацияси жорий чатда бажарилди, кейинги мустақил режали цикл ҳали текширилмаган.
 
@@ -100,9 +111,12 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 ## 8. Муҳокама учун ОЧИҚ қарорлар
 
+**Муҳокама қоидаси:** ҳар савол бўйича 2–3 та содда вариант ва **аниқ тавсия** берилади; сен жавоб бермасдан кейингисига ўтсанг, тавсияни режа учун танланган default деб ҳисоблаймиз. Кейин ўзгартириш мумкин. Бироқ жим қолиш — пулли хизматни ёқиш ёки production'га ўзгариш жойлаштиришга рухсат эмас.
+
 | ID | Савол | Таклиф (тасдиқланмаган) |
 |---|---|---|
-| Q4 | Биринчи KB қайси бўлимдан: тўлов, обуна, аккаунт, Android, PWA, Telegram? | Тўлов + аккаунт + Android/PWA, кейин қолганлари. |
+| Q4 (ЕЧИЛГАН) | Биринчи KB қамрови | 7 та бўлим R2’да яратилди: payments, subscriptions, accounts, android, pwa, telegram, general. |
+| Q17 | R2'дан қайси билим файлини топиш усули? | A (тавсия): 7 topic'га оддий keyword map, 1–2 файл. B: D1 search. C: AI classifier. |
 | Q5 | Захира провайдер ва модель қайси? | RU/TJ/UZ сифати текширилган битта арзон модель. |
 | Q6 | Захира тўлови Gateway Unified Billing’ми ёки BYOK API калитими? | BYOK, агар provider hard spending limit бор бўлса; қулайликни ҳам солиштириш. |
 | Q7 | Захира учун кунлик ва ойлик максимал бюджет қанча? | Бошланғич таклиф $0.20/кун ва $3/ой. |
@@ -116,7 +130,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q15 | Янги AI провайдер учун мослик чегараси қандай? | Gateway/compatible API — config only; native incompatible API — adapter. |
 | Q16 | RU/TJ/UZ сифати ва тўлов FAQ жавобларини ким қабул қилади? | Owner 10 та real савол × 3 тил билан тасдиқлайди. |
 
-**ЕЧИЛГАН:** Q1–Q3 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q4–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
+**ЕЧИЛГАН:** Q1–Q4 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** аввал Q17 (R2→AI файл танлаш), кейин Q5–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
 
 ## 9. Ҳозир бажарилмайдиган ишлар
 
