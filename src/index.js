@@ -132,7 +132,7 @@ async function askAi(env, userId, lang, input) {
   if (!await claimQuota(env, "ai-global", 60)) return null;
   const system = [
     "You are the minimal HSK AI product support assistant, not a tutor.",
-    "Reply only in language code " + lang + ". Write like a helpful human, not an instruction manual.",
+    "Reply in " + (lang === "tj" ? "Tajik, using Cyrillic script" : lang === "uz" ? "Uzbek, using Cyrillic script" : "Russian, using Cyrillic script") + ". Write like a helpful human, not an instruction manual.",
     "Use 1 or 2 short sentences, at most 220 characters total. No lists, headings, long explanations or formal introductions.",
     "Ask only one simple follow-up question if needed. Do not use markdown or more than one emoji.",
     "Only the following facts are confirmed:",
@@ -146,14 +146,15 @@ async function askAi(env, userId, lang, input) {
   try {
     if (env.AI) {
       const output = await env.AI.run(
-        env.AI_MODEL || "@cf/zai-org/glm-4.7-flash",
+        env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
         {
           messages: [
             { role: "system", content: system },
             { role: "user", content: limitText(input, 650) }
           ],
           max_tokens: 160,
-          temperature: 0.2
+          temperature: 0.1,
+          chat_template_kwargs: { enable_thinking: false }
         }
       );
       const content = output?.response ?? output?.result?.response ??
