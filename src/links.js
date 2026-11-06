@@ -78,7 +78,8 @@ export function appendOfficialLink(answer,{input,lang,history=[]}) {
 
 // Give immediate, factual answers to common link/how-to requests. No model
 // call, no guessed PWA deep link, and no repeating an unrelated support script.
-const LINK_REQUEST = /(?:ссылк|силк|линк|ҳавола|хавола|link\b|url\b|адрес|манзил|юбор|ташлаб|скинь|отправ|жўнат|жунат)/iu;
+const LINK_REQUEST = /(?:ссылк|силк|линк|ҳавола|хавола|link\b|url\b|адрес|манзил)/iu;
+const SEND_REQUEST = /(?:юбор|ташлаб|скинь|отправ|жўнат|жунат|бер|дай|send|перешли)/iu;
 const IPHONE = /(?:iphone|айфон|\bios\b|\bpwa\b|айфонда)/iu;
 const ANDROID = /(?:android|андроид|apk\b)/iu;
 const GUIDE = /(?:йўриқнома|йурикнома|қўлланма|кулланма|инструкц|руководств|guide|how.to|кўрсатма|курсатма)/iu;
@@ -116,7 +117,7 @@ export function directLinkOrGuideReply(input,lang="ru",history=[]) {
   const context=recentWords(history);
   // Only explicit guide or link requests are handled here; a bare platform
   // after an account FAQ is still handled by platformLoginFollowup.
-  if (GUIDE.test(q) && (LINK_REQUEST.test(q) || /(?:дай|бер|қайда|қаер|где|можно|хоҳ|керак|please)/iu.test(q))) {
+  if (GUIDE.test(q) && (LINK_REQUEST.test(q) || SEND_REQUEST.test(q) || /(?:қайда|қаер|где|можно|хоҳ|керак|please)/iu.test(q))) {
     return r.guide+"\nhttps://hskai.app/"+l+"/guide/faq/";
   }
   if (IPHONE.test(q) && (LINK_REQUEST.test(q) || /(?:скача|юклаб|скачать|установ|ўрнат|загруз)/iu.test(q))) {
