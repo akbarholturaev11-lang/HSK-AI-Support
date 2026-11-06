@@ -55,6 +55,7 @@ export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
       /(?:android|андроид|app|приложен|илова|программа|hsk|хск)/u.test(q)) return OFFICIAL_LINKS.download;
   if (/(?:android|андроид)/u.test(q) &&
       /(?:скача|загруз|download|установ|ўрнат|юклаб)/u.test(a) && !recentAccountTopic(history)) return OFFICIAL_LINKS.download;
+  if (/(?:iphone|айфон|ios|pwa)/u.test(q) && /(?:силка|ссылк|ҳавола|линк|манзил|юбор|ташлаб|беринг|скача|ўрнат|установ|download)/u.test(q)) return OFFICIAL_LINKS.home;
   if (/^(?:официальный сайт|сайт hsk ai|сайт hsk|расмий сайт|website hsk ai|hsk ai сайт)$/u.test(q)) return OFFICIAL_LINKS.home;
   return null;
 }
