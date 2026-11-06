@@ -388,7 +388,7 @@ test("V2 image screenshot is sent to Vision with R2 facts, not saved in knowledg
     assert.equal((await call(env,update)).status,200);
     assert.deepEqual(objects,["knowledge/general.json"]);
     assert.equal(aiRequests.length,1);
-    assert.ok(aiRequests[0].request.image.startsWith("data:image/jpeg;base64,"));
+    assert.ok(aiRequests[0].request.messages.at(-1).content.some(part => part.type==="image_url" && part.image_url.url.startsWith("data:image/jpeg;base64,")));
     assert.match(aiRequests[0].request.messages[0].content,/HSK AI teaches Chinese/);
     assert.ok(calls.some(c=>c.method==="sendMessage"&&c.body.text==="Проверьте настройки приложения."));
     assert.ok(!calls.some(c=>c.method==="copyMessage"));
