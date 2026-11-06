@@ -106,6 +106,13 @@ export function languageGuide(lang) {
 // Ambiguous short text is allowed; this never translates or rewrites an answer.
 export function isObviouslyWrongLanguage(lang, answer) {
   const s=String(answer||"").toLowerCase();
+  // The model can sometimes produce fluent Russian even for an Uzbek/Tajik
+  // request. Reject clearly Russian boilerplate instead of showing it.
+  const words=new Set(s.match(/[\p{L}\p{M}]+/gu)||[]);
+  const russian=["уточните","пожалуйста","ваш","вопрос","если","нужна","проверка",
+    "аккаунта","помощь","человека","отправьте","можем","общаться","конечно",
+    "напишите","могу","помочь","чем","здравствуйте","привет","спасибо","поддержка"];
+  if(lang!=="ru" && russian.filter(w=>words.has(w)).length>=2) return true;
   if(lang==="ru") return /[ўғқҳҷӣӯ]/u.test(s);
   if(lang==="tj") return /[ўғ]/u.test(s) ||
     /(?:^|[^\p{L}])(бу|учун|тилини|ўрганиш|бўлиб|мўлжалланган|қилинг|кўринг)(?=$|[^\p{L}])/u.test(s);
