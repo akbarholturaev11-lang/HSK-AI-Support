@@ -1,6 +1,6 @@
 # HSK AI Support — Cloudflare Worker
 
-Independent Telegram product-support bot for HSK AI. **Zero requests to the main HSK AI backend**. Stack: Cloudflare Worker, D1, Telegram Bot API, optional OpenAI-compatible HTTPS AI provider.
+Independent Telegram product-support bot for HSK AI. **Zero requests to the main HSK AI backend**. Stack: Cloudflare Worker, D1, native Cloudflare Workers AI and Telegram Bot API.
 
 ## MVP functionality
 - Auto-language and entry-source detection: RU/TJ/UZ; android, pwa, bot, miniapp, web, ig, desktop.
@@ -10,7 +10,7 @@ Independent Telegram product-support bot for HSK AI. **Zero requests to the main
 - 60 user messages/day, 3 AI requests/user/day, 60 global AI requests/day; webhook secret validation and replay deduplication.
 - Only limited metadata is stored, not messages or media. Daily metadata cleanup.
 
-The support channel is always available, but operators are not guaranteed 24/7. AI is optional and may incur provider charges. The bot cannot verify payments, subscription ownership or HSK AI accounts.
+The support channel is always available, but operators are not guaranteed 24/7. Workers AI uses Cloudflare's free daily allocation; after the quota is exhausted AI calls fail safely and tickets go to an operator. The bot cannot verify payments, subscription ownership or HSK AI accounts.
 
 ## Deploy
 
@@ -40,11 +40,7 @@ npx wrangler secret put ADMIN_CHAT_ID
 
 The WEBHOOK_SECRET must contain only ASCII letters, digits, dashes or underscores, be 1–256 chars and differ from the Telegram bot token. ADMIN_CHAT_ID is the numeric chat ID of a private Telegram operator group in which the bot has been added.
 
-4. For AI support, optionally add AI_API_KEY with the command below. AI_BASE_URL and AI_MODEL can be changed in wrangler.toml to a compatible HTTPS chat-completions provider. The default model is **paid**, not free.
-
-~~~bash
-npx wrangler secret put AI_API_KEY
-~~~
+4. AI is provided by the Cloudflare Workers AI binding in wrangler.toml, using the multilingual @cf/zai-org/glm-4.7-flash model. No external AI key is required. Free-plan quotas apply; exceeded limits fall back to an operator.
 
 5. Run tests and deploy:
 
@@ -84,4 +80,4 @@ Use only a private Telegram group with trusted staff. Reply to any copied ticket
 
 Database retention: webhook IDs 7 days, rate counters 3 days, ticket metadata 90 days. No user message bodies or uploaded files stored in D1.
 
-Run npm test locally. GitHub Actions also runs tests on pushes and PRs.
+Run npm test locally. GitHub Actions also runs tests on pushes and PRs. The Worker was initially deployed through Cloudflare API; GitHub auto-deploy is not configured yet, so push alone does not update production.
