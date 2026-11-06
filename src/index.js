@@ -104,8 +104,15 @@ async function forwardToOperator(env, user, ctx, message = null) {
   }
   const ticket = await openTicket(env, user.id, ctx);
   const detail = message && (message.text || message.caption) ? limitText(message.text || message.caption, 1300) : "";
+  // Username comes from the Telegram user object, never from user-authored text.
+  const username = /^[A-Za-z0-9_]{3,32}$/.test(String(user.username || "")) ?
+    user.username : null;
+  const usernameLine = username ?
+    "\\nTelegram: <a href=\"https://t.me/" + username + "\">@" + username + "</a>" :
+    "\\nTelegram: username not set";
   const header = "<b>📨 HSK AI Support #" + ticket.id + "</b>" +
     "\nID: <code>" + user.id + "</code>" +
+    usernameLine +
     "\nLanguage: " + escapeHtml(ctx.lang) +
     "\nSource: " + escapeHtml(ctx.source) +
     "\nName: " + escapeHtml(limitText(user.first_name || "", 60)) +
