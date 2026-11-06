@@ -1,7 +1,7 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer } from "./ai.js";
-import { saveConversationExchange } from "./conversation.js";
+import { saveConversationExchange, clearConversationContext } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -222,6 +222,7 @@ async function handlePrivate(env, message) {
   const copy = COPY[ctx.lang] || COPY.ru;
   if (start !== null) {
     await returnToBotMenu(env, user);
+    await clearConversationContext(env,user.id);
     await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
     return;
   }
@@ -277,6 +278,7 @@ async function handlePrivate(env, message) {
     await sendUser(env, user.id, faq);
     // Keep account/login topic for the next one-word platform reply.
     // Existing short-lived D1 memory is reused; no new table or external call.
+    await clearConversationContext(env,user.id);
     if (faq === copy.account) {
       await saveConversationExchange(env,user.id,text,faq);
     }
@@ -317,6 +319,7 @@ async function handleCallback(env, callback) {
   }
   const key = action.slice(5);
   await sendUser(env, callback.from.id, copy[key]);
+  await clearConversationContext(env,callback.from.id);
   if (key === "account") {
     await saveConversationExchange(env, callback.from.id,
       "Аккаунт ва кириш / Account login", copy.account);
