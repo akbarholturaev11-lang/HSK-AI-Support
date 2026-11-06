@@ -58,6 +58,8 @@ test("V2 high-risk personal payment/account questions require an operator",()=>{
   assert.equal(requiresHumanVerification("Аккаунтим очилмаяпти, текшириб беринг"),true);
   assert.equal(requiresHumanVerification("Можно оплатить через Alipay?"),false);
   assert.equal(requiresHumanVerification("Как войти в аккаунт?"),false);
+  assert.equal(requiresHumanVerification("Мой вход не работает"),false);
+  assert.equal(requiresHumanVerification("Менда аккаунтга кириш ишламаяпти"),false);
   assert.equal(requiresHumanVerification("HSK AI нима?"),false);
 });
 
