@@ -956,6 +956,7 @@ test("failed Telegram photo download is reported separately from AI uncertainty"
 
 test("official support links stay clickable without Telegram preview cards", async () => {
   const {env}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"Поддержка HSK AI."})})};
   const oldFetch=globalThis.fetch, calls=[];
   let id=9001;
   globalThis.fetch=async(url,init)=>{
