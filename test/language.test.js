@@ -47,6 +47,9 @@ test("casual turns bypass product KB only when no substantive question is presen
   assert.equal(isConversationalTurn("салом"),true);
   assert.equal(isConversationalTurn("ээээ"),true);
   assert.equal(isConversationalTurn("Ўзбек тилида тўловимни текширинг"),false);
+  assert.equal(isConversationalTurn("Тарифни ўзбек тилида тушунтир"),false);
+  assert.equal(isConversationalTurn("Рус тилида обуна нархи қанча?"),false);
+  assert.equal(isConversationalTurn("HSK AI ҳақида ўзбекча тушунтир"),false);
   assert.equal(isConversationalTurn("Мой аккаунт не работает"),false);
   assert.match(conversationalFallback("ээээ","uz"),/HSK AI/);
   assert.match(conversationalFallback("ўзбек тилида суҳбатлашайлик","uz"),/Ўзбек тилида/);
