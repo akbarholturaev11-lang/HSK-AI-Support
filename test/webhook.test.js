@@ -1014,3 +1014,56 @@ test("Uzbek guide, iPhone link and resend requests are answered without repetiti
     assert.equal(tickets.size,0);
   }finally{globalThis.fetch=orig;}
 });
+
+
+test("start and every FAQ selection reach AI context; R2 checks nearest topic and uncertainty is explicit",async()=>{
+  const {env,tickets,conversations}=stub();
+  const sourceSha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  const reads=[],prompts=[],calls=[];
+  env.KB={get:async key=>{
+    reads.push(key);
+    const topic=key.slice("knowledge/".length,-".json".length);
+    return {json:async()=>({topic,source_commit:sourceSha,
+      facts:["HSK AI verified "+topic+" support details."]})};
+  }};
+  env.AI={run:async(model,request)=>{
+    prompts.push(request.messages);
+    const question=String(request.messages.at(-1).content);
+    return {response:JSON.stringify(question.includes("Pro")
+      ? {action:"handoff",answer:""}
+      : {action:"answer",answer:"Проверьте способ входа Google или Telegram."})};
+  }};
+  const before=globalThis.fetch;let n=12001;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),body:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:n++}});
+  };
+  const user={id:12000,language_code:"ru"};
+  const start={update_id:12000,message:{chat:{id:12000,type:"private"},from:user,message_id:1,text:"/start"}};
+  const option=(id,key)=>({update_id:id,callback_query:{id:"q"+id,from:user,
+    message:{chat:{id:12000,type:"private"},message_id:id},data:"help:"+key}});
+  const ask=(id,text)=>({update_id:id,message:{chat:{id:12000,type:"private"},from:user,message_id:id,text}});
+  try{
+    assert.equal((await call(env,start)).status,200);
+    assert.match(conversations[0].text,/start/);
+    assert.equal(calls.filter(x=>x.method==="sendMessage").length,1);
+    assert.equal((await call(env,option(12001,"payment"))).status,200);
+    assert.match(conversations[0].text,/FAQ selected: payment/);
+    assert.equal(calls.filter(x=>x.method==="sendMessage").length,1,
+      "FAQ selection must not produce a canned chat reply");
+    assert.equal((await call(env,ask(12002,"Как оплатить Pro?"))).status,200);
+    assert.ok(prompts[0].some(x=>String(x.content).includes("FAQ selected: payment")));
+    assert.ok(reads.includes("knowledge/payments.json"));
+    assert.ok(reads.includes("knowledge/subscriptions.json"));
+    assert.match(calls.filter(x=>x.method==="sendMessage").at(-1).body.text,/нет подтверждённой информации/);
+    assert.equal(tickets.size,0,"no automatic operator ticket on missing facts");
+
+    reads.length=0;
+    assert.equal((await call(env,option(12003,"account"))).status,200);
+    assert.equal((await call(env,ask(12004,"Android вход не работает"))).status,200);
+    assert.ok(prompts.at(-1).some(x=>String(x.content).includes("FAQ selected: account")));
+    assert.ok(reads.includes("knowledge/android.json"));
+    assert.ok(reads.includes("knowledge/accounts.json"));
+    assert.match(calls.filter(x=>x.method==="sendMessage").at(-1).body.text,/Google или Telegram/);
+  }finally{globalThis.fetch=before;}
+});
