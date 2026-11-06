@@ -8,7 +8,7 @@
 
 1. Бот Telegram’даги мавжуд FAQ, 24/7 мурожаат қабул қилиш, typing, Reply оператор жавоблари, ticket ва /close механизмларини сақлайди.
 2. AI’ни битта жойдан алмаштирамиз: Cloudflare AI Gateway + Dynamic Routing. Бирламчи — Cloudflare Workers AI’нинг бепул Neuron квотаси, захира — битта ташқи AI провайдери.
-3. Р2 (R2 Standard) — маҳсулотнинг тасдиқланган маълумотларини мавзулар бўйича кичик файлларда сақлаш; D1 — файл индекси, фаол версия, тикетлар, лимит ва техник статистика.
+3. R2 Standard — English маҳсулот маълумотларини мавзулар бўйича қисқа JSON файлларда сақлаш; D1 — тикетлар, лимит ва керак бўлса қидирув индекси. GitHub Scheduled Agent ўзгариш бўлганда автоматик янгилайди.
 4. Билимлар базаси **битта English каноник тилда** сақланади. Ҳар ҳужжатда ru/tj/uz таржималари ёки lang майдони бўлмайди. AI фойдаланувчига унинг тилида жавоб беради. Кириш ҳаволасидан тилни билиш сақланади, лекин user бошқа тилда ёзса жавоб ўша тилга ўтади. Тил танлаш экрани йўқ.
 5. Чекланган AI: 1–2 қисқа жумла, одатда 220 белгидан узун эмас. Асоссиз тўлов тасдиғи, қайтарим, аккаунт текшируви ёки баг тузатилганини айтиш тақиқ.
 6. Gateway ёрдамида мос провайдерлар моделини конфигурация орқали алмаштириш. Бошқа API протоколидаги ҳар қандай модель учун 100% автоматик мослик ваъда қилинмайди — баъзан адаптер керак.
@@ -23,30 +23,37 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Мажбурий техник текширув:** Cloudflare Workers AI Gateway орқали чақирилганда бепул квота қандай ҳисобланади? Квота тугаганда қандай сигнал қайтарилади? Gateway Dynamic Route ташқи моделга ҳақиқатан fallback қиладими? Қандай ҳолатда билмасдан пуллик billing ишга тушиши мумкин? Агар бу шартларни ишончли таъминлаб бўлмаса, Cloudflare native Workers AI primary ва Gateway backup’ни бирлаштирувчи жуда кичик Worker router қилинади, лекин модел номлари ягона конфигурациядан келади.
 
-## 3. R2 Knowledge Base — ягона English манба
+## 3. R2 Knowledge Base — автоматик ChatGPT агент
 
-Private bucket ва бўлимлар мисоли:
+**ЯНГИ ТАСДИҚЛАНГАН ҚАРОР:** Маълумотни ҳар бир ўзгаришда қўлда owner тасдиқлаши шарт эмас. Битта ChatGPT Scheduled Agent `HSK-AI-Bot/main` ни **ҳар 4 соатда** текширади. Мавжуд билимлар базасидаги фактлар ўзгармаган бўлса, **ҳеч қандай файлни қайта ёзмайди**.
 
-- kb/payments/card-declined/v1.json
-- kb/payments/subscription-not-active/v2.json
-- kb/accounts/telegram-login/v1.json
-- kb/android/update-required/v1.json
-- kb/pwa/ios-install/v2.json
-- kb/telegram/mini-app/v1.json
-- kb/general/product-overview/v1.json
+### Ҳар бир циклда аниқ 5 ҳаракат
 
-**Ҳар ҳужжатда минимал майдонлар:** id, title, body, tags, source, updated_at, version, status. Алоҳида lang йўқ.
+1. GitHub `akbarholturaev11-lang/HSK-AI-Bot` репозиторийсининг ҳозирги `main` commit SHA'сини олади; Support KB'да охирги текширилган SHA билан солиштиради.
+2. SHA ўзгармаган бўлса — **тўхтайди, R2'га тегмайди, фойдаланувчига хабар юбормайди**.
+3. SHA ўзгарган бўлса — фақат янги commit diff'ларини ва зарур бўлса тегишли янги код/қоидаларни ўқийди. Бутун катта репозиторийни ҳар сафар қайта таҳлил қилмайди.
+4. Фойдаланувчига тегишли **текшириб бўладиган маҳсулот қоидаси** ўзгарган бўлса, фақат шу бўлимнинг English JSON файлини янгилайди. Ботга тегишли бўлмаган рефактор, тест, internal-only ўзгаришларига тегмайди.
+5. Янгиланган KB файли ва охирги текширилган SHA GitHub'да қайд қилинади, R2 билан автоматик sync қилинади. R2 ишга тушгунча GitHub — staging source; ишга тушганидан кейин автоматик publish, owner approval йўқ.
 
-- **source:** фактнинг тасдиқланган манбаси — official policy, production release ёки текширилган repo commit/URL.
-- **updated_at:** ҳужжат қачон текширилган/янгиланган. Бу фактнинг ҳозир ҳам тўғрилигини автоматик кафолатламайди.
-- **version:** ҳар ўзгариш алоҳида R2 объект. Эски версия rollback учун сақланади.
-- **status:** draft, approved ёки deprecated. AI фақат approved ҳужжатни кўради.
-- **D1 knowledge_index:** id, title, tags, source_ref, active_object_key, version, approved_at, updated_at, checksum.
-- **R2:** файллар; **D1:** active pointer ва қидирув. Бир катта файлни ўқиш йўқ.
+### Содда R2 тузилиши
 
-Янгилаш кетма-кетлиги: манба текшириш → янги English файлни draft қилиш → schema/fact validation → owner approval → R2 янги revision → D1 active pointer алмаштириш → rollback имконияти.
+- `kb/payments.json`
+- `kb/subscriptions.json`
+- `kb/accounts.json`
+- `kb/android.json`
+- `kb/pwa.json`
+- `kb/telegram.json`
+- `kb/general.json`
 
-Автоматик GitHub commit/релиз кузатуви фактни мустақил тасдиқламайди. Production версияда кўринмаган ўзгаришни AI user-visible деб айтмаслиги керак.
+Бир мавзуда фактлар жуда кўпайса, кейин кичик файлларга бўлинади. **Ҳозирча версия-папкалар, draft/approved workflow, мажбурий қўл тасдиғи ЙЎҚ.** GitHub commit history rollback вазифасини бажаради. R2'да фақат охирги амалий English фактлар сақланади.
+
+Ҳар JSON: `topic`, `facts` (текширилган фактлар), `source_commit`, `updated_at`. `lang` йўқ. Файлнинг ўзгариш вақти фақат ҳақиқий content ўзгарганда янгиланади. Таржима дубликати сақланмайди — AI user ёзган тилга мослашади.
+
+**Хавфсизликнинг битта зарур чегараси:** `main`'даги код ҳамма user'га аллақачон deploy қилинган дегани эмас. Агент ишончсиз, фақат режалаштирилган ёки ҳали тарқатилмаган функцияни **ҳозир фаол** деб KB'га киритмайди. Бундай ўзгаришга тегмайди, шубҳали ҳолатни қисқа ёзиб қолдиради. Бу owner approval жараёни эмас, фактни сохталаштирмаслик учун автоматик filter.
+
+**Боғланиш:** ChatGPT Scheduled Agent → GitHub Support repo'даги `knowledge/` файллар → GitHub Actions автоматик R2 sync → Support Worker файлини private R2 binding билан ўқийди. Агент R2 API билан қўлбола ишламайди, шу сабаб API upload/token ва қўл deploy қийинчиликлари камроқ. GitHub Actions R2 sync фақат тегишли JSON ўзгарганда ишлайди. Тикетлар ва бошқа маълумотлар ҳозирги D1'да қолади.
+
+**Маълум чеклов:** Cloudflare аккаунтда R2 ҳали enable қилинмаган (Cloudflare API: `10042: Please enable R2 through the Cloudflare Dashboard`). R2'га publish қилиш учун owner бир марта R2'ни ёқиши ва GitHub sync учун чекланган credential созланиши керак; шунгача R2'га ёзилган деб кўрсатиш мумкин эмас.
 
 ## 4. Қидирув — энг енгил MVP
 
@@ -73,9 +80,9 @@ Private bucket ва бўлимлар мисоли:
 
 **Phase 1 — universal AI router:** Gateway route, модели алмаштириш, paid backup, privacy/budget, error/fallback simulation; Cloudflare free квотаси воқеий текширилади. Фақат синовдан сўнг release.
 
-**Phase 2 — R2 + D1 KB:** private bucket, index migration, 5–10 та owner-approved English ҳужжат, кичик retrieval, version/rollback, аниқ user жавоблари.
+**Phase 2 — R2 Knowledge:** private R2 bucket, English topic JSON, зарур D1 index ва GitHub Actions R2 sync. Support Worker 1–3 кичик файл ўқийди; GitHub тарихидан rollback.
 
-**Phase 3 — update workflow:** GitHub/product ўзгаришларини detection → draft → approval → publish. Хато бўлса аввалги approved фактлар қолади.
+**Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда ёзади → GitHub Actions R2'га автоматик sync. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ.
 
 **Phase 4 — rollout:** CI, staging, реал RU/TJ/UZ саволлари, quota/timeout/invalid token/cost tests, операторга тўғри ўтиш, мониторинг. Production deployment фақат owner тасдиғи ва rollback варианти билан.
 
@@ -84,7 +91,7 @@ Private bucket ва бўлимлар мисоли:
 - HSK AI Railway серверига Support’дан 0 сўров.
 - Модел ва backup алмашиш Telegram кодини таҳрирламасдан мумкин.
 - FAQ AI/R2сиз; KB сўрови максимум 1–3 R2 ҳужжат.
-- KB бир тилда, фақат approved ва source-backed. Таржима дубликатлари йўқ.
+- KB бир тилда, текширилган main кодга таянган ва source_commit'ли. Таржима дубликатлари йўқ; файл фақат факт ўзгарганда қайта ёзилади.
 - Free AI quota exhaustion ҳолатида захира ишлайди; у ҳам ишламаса Telegram операторга ticket келади.
 - Ботнинг мавжуд Reply, /close, фото, deep-link, typing ва webhook имкониятлари бузилмайди.
 - Лимит, харажат, AI хатолари ва rollback амалда текширилган.
@@ -93,16 +100,13 @@ Private bucket ва бўлимлар мисоли:
 
 | ID | Савол | Таклиф (тасдиқланмаган) |
 |---|---|---|
-| Q1 | Ҳақиқий фактнинг source of truth’и: production, GitHub main, расмий сайт, owner policy — қайси бири устун? | Тасдиқланган production user-visible ҳолат + owner-approved policy. Commit фақат далил. |
-| Q2 | Билим ҳужжатини ким approved қила олади? | Фақат owner; оператор фақат draft таклиф қилади. |
-| Q3 | GitHub/сайт/релиз янгиликларини қандай кузатамиз: webhook, ҳар 6 соат, кунлик? | Automatic detection + manual approval. |
 | Q4 | Биринчи KB қайси бўлимдан: тўлов, обуна, аккаунт, Android, PWA, Telegram? | Тўлов + аккаунт + Android/PWA, кейин қолганлари. |
 | Q5 | Захира провайдер ва модель қайси? | RU/TJ/UZ сифати текширилган битта арзон модель. |
 | Q6 | Захира тўлови Gateway Unified Billing’ми ёки BYOK API калитими? | BYOK, агар provider hard spending limit бор бўлса; қулайликни ҳам солиштириш. |
 | Q7 | Захира учун кунлик ва ойлик максимал бюджет қанча? | Бошланғич таклиф $0.20/кун ва $3/ой. |
 | Q8 | AI сўров лимити: ҳозир 3/user ва 60/global — янги меъёр қанча? | 5/user/кун, глобал Neuron ва бюджет билан назорат. |
 | Q9 | Охирги user хабарларидан контекст сақлаймизми? | Масалан, 30 дақиқагача 2–3 хабар, автоматик ўчириш, PIIсиз. |
-| Q10 | Қайси KB маълумотлари тез эскиради ва қайта тасдиқ муддати қанча? | Payment/plan — ҳар релиз/политика алмашганда; general — камроқ. |
+| Q10 | Агар main кодда user-visible ўзгариш билан production deploy ўртасида фарқ бўлса, агент нимани 'актив' деб ҳисоблайди? | Фақат ишончли deploy далили бор фактни фаол деб белгилайди, шубҳали фактга тегмайди. |
 | Q11 | Техник AI хатосида 1+1 чақирувдан кейин нима кўрсатамиз? | Қисқа статус ва operator ticket, чексиз retry йўқ. |
 | Q12 | Моделни алмаштириш интерфейси фақат Cloudflare Dashboard’ми ёки Admin PWA ҳам керакми? | MVP фақат AI Gateway Dashboard. |
 | Q13 | KB revision сақлаш сиёсати? | Approved версиялар + охирги 5 revision. |
@@ -110,7 +114,7 @@ Private bucket ва бўлимлар мисоли:
 | Q15 | Янги AI провайдер учун мослик чегараси қандай? | Gateway/compatible API — config only; native incompatible API — adapter. |
 | Q16 | RU/TJ/UZ сифати ва тўлов FAQ жавобларини ким қабул қилади? | Owner 10 та real савол × 3 тил билан тасдиқлайди. |
 
-**Биринчи муҳокама учун устувор саволлар:** Q1, Q2, Q5, Q6, Q7, Q8, Q9, Q12. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
+**ЕЧИЛГАН:** Q1–Q3 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q4–Q16. Шу пайтгача R2/AI production ўзгаришлари қилинмайди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
 
 ## 9. Ҳозир бажарилмайдиган ишлар
 
