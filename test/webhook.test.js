@@ -150,3 +150,41 @@ test("AI shows typing before model call and sends a brief answer", async () => {
   } finally { globalThis.fetch = original; }
 });
 
+
+test("Cloudflare Workers AI binding answers briefly, without external AI API key", async () => {
+  const { env } = stub();
+  const calls = [];
+  const aiCalls = [];
+  env.AI_MODEL = "@cf/zai-org/glm-4.7-flash";
+  env.AI = {
+    async run(model, request) {
+      aiCalls.push({ model, request });
+      assert.ok(calls.some(x => x.method === "sendChatAction"), "typing indicator first");
+      return { response: JSON.stringify({ action:"answer", answer:"HSK AI помогает учить китайский язык." }) };
+    }
+  };
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const method = String(url).split("/").pop();
+    calls.push({ method, body: JSON.parse(init.body) });
+    return Response.json({ ok:true, result:{ message_id:400 } });
+  };
+  try {
+    const msg = {
+      update_id: 301,
+      message: {
+        chat:{ id:72, type:"private" },
+        from:{ id:72, language_code:"ru" },
+        message_id:4,
+        text:"Что такое HSK AI?"
+      }
+    };
+    const response = await call(env, msg);
+    assert.equal(response.status, 200);
+    assert.equal(aiCalls.length, 1);
+    assert.equal(aiCalls[0].model, "@cf/zai-org/glm-4.7-flash");
+    assert.ok(calls.some(x => x.method === "sendMessage" && x.body.text === "HSK AI помогает учить китайский язык."));
+    assert.equal(calls.filter(x=>x.method==="sendMessage").length, 1);
+  } finally { globalThis.fetch = original; }
+});
+
