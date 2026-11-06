@@ -171,7 +171,7 @@ test("Cloudflare Workers AI binding answers briefly, without external AI API key
   const { env } = stub();
   const calls = [];
   const aiCalls = [];
-  env.AI_MODEL = "@cf/zai-org/glm-4.7-flash";
+  env.AI_MODEL = "@cf/google/gemma-4-26b-a4b-it";
   env.AI = {
     async run(model, request) {
       aiCalls.push({ model, request });
@@ -198,7 +198,9 @@ test("Cloudflare Workers AI binding answers briefly, without external AI API key
     const response = await call(env, msg);
     assert.equal(response.status, 200);
     assert.equal(aiCalls.length, 1);
-    assert.equal(aiCalls[0].model, "@cf/zai-org/glm-4.7-flash");
+    assert.equal(aiCalls[0].model, "@cf/google/gemma-4-26b-a4b-it");
+    assert.deepEqual(aiCalls[0].request.chat_template_kwargs, { enable_thinking: false });
+    assert.match(aiCalls[0].request.messages[0].content, /Cyrillic script/);
     assert.ok(calls.some(x => x.method === "sendMessage" && x.body.text === "HSK AI помогает учить китайский язык."));
     assert.equal(calls.filter(x=>x.method==="sendMessage").length, 1);
   } finally { globalThis.fetch = original; }
