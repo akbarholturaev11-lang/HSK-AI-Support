@@ -278,6 +278,38 @@ async function handleAdmin(env, message) {
   await env.DB.prepare("UPDATE tickets SET updated_at=? WHERE id=?").bind(Math.floor(Date.now() / 1000), link.ticket_id).run();
 }
 
+
+async function registerWebhookOnce(env) {
+  if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.ADMIN_CHAT_ID || !env.DB) return;
+  const origin = String(env.PUBLIC_WORKER_ORIGIN || "").replace(/\/+$/, "");
+  if (!/^https:\/\/[a-z0-9.-]+$/i.test(origin)) return;
+  const url = origin + "/webhook";
+  // One registration per unique credentials+origin, even after a token rotation.
+  const input = new TextEncoder().encode([env.BOT_TOKEN, env.WEBHOOK_SECRET, url].join(":"));
+  const fingerprint = [...new Uint8Array(await crypto.subtle.digest("SHA-256", input))]
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+  const previous = await env.DB.prepare(
+    "SELECT value FROM service_settings WHERE key='telegram_webhook_sha256'"
+  ).first();
+  if (previous?.value === fingerprint) return;
+  try {
+    const result = await telegram(env, "setWebhook", {
+      url,
+      secret_token: env.WEBHOOK_SECRET,
+      max_connections: 1,
+      allowed_updates: ["message", "callback_query"]
+    });
+    if (result !== true) throw new Error("telegram_webhook_not_confirmed");
+    await env.DB.prepare(
+      "INSERT INTO service_settings(key,value,updated_at) VALUES('telegram_webhook_sha256',?,?) " +
+      "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at"
+    ).bind(fingerprint, Math.floor(Date.now() / 1000)).run();
+    console.info("support_webhook_registered");
+  } catch {
+    console.warn("support_webhook_registration_unavailable");
+  }
+}
+
 async function routeUpdate(env, update) {
   if (update.callback_query) return handleCallback(env, update.callback_query);
   if (!update.message) return;
@@ -310,14 +342,20 @@ export default {
       return fail(503);
     }
   },
-  async scheduled(_controller, env) {
-    // No message bodies or card information are stored; prune metadata only.
-    const now = Math.floor(Date.now() / 1000);
-    await env.DB.batch([
-      env.DB.prepare("DELETE FROM processed_updates WHERE created_at < ?").bind(now - 7 * 86400),
-      env.DB.prepare("DELETE FROM quotas WHERE day < ?").bind(dayKey(Date.now() - 3 * 86400000)),
-      env.DB.prepare("DELETE FROM tickets WHERE updated_at < ?").bind(now - 90 * 86400),
-      env.DB.prepare("DELETE FROM admin_links WHERE ticket_id NOT IN (SELECT id FROM tickets)")
-    ]);
+  async scheduled(controller, env) {
+    if (controller.cron === "*/5 * * * *") {
+      await registerWebhookOnce(env);
+      return;
+    }
+    if (controller.cron === "0 3 * * *") {
+      // No message bodies or card information are stored; prune metadata only.
+      const now = Math.floor(Date.now() / 1000);
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM processed_updates WHERE created_at < ?").bind(now - 7 * 86400),
+        env.DB.prepare("DELETE FROM quotas WHERE day < ?").bind(dayKey(Date.now() - 3 * 86400000)),
+        env.DB.prepare("DELETE FROM tickets WHERE updated_at < ?").bind(now - 90 * 86400),
+        env.DB.prepare("DELETE FROM admin_links WHERE ticket_id NOT IN (SELECT id FROM tickets)")
+      ]);
+    }
   }
 };
