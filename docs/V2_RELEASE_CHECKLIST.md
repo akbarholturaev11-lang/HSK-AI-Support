@@ -8,9 +8,9 @@ Status: **implemented in isolated branch, NOT production-deployed**. Approval fo
 - `src/ai-router.js`: Workers AI Gemma 4 primary through named Cloudflare AI Gateway; MiniMax M3.1 Flash backup when the primary errors or returns malformed output. Explicit model `handoff` goes straight to the operator.
 - Backup is **OFF** unless all three values are explicitly set to `true`: `MINIMAX_BACKUP_ENABLED`, `BACKUP_BILLING_APPROVED`, `GATEWAY_SPEND_LIMITS_CONFIRMED`. No paid provider key is stored in GitHub. Budget reservations conservatively allow at most 20 backup attempts in a day and 300 in a month, reserving $0.01 per attempt; these are **not precise charges** or a replacement for the Gateway spend caps.
 - `src/conversation.js`: last five sanitized user/AI turns, sliding one-hour expiry. Context is stored only in D1, never in R2. Email addresses, numbers, URLs and username-like tokens are removed before storage. Do not claim heuristic redaction catches all sensitive content.
-- AI quota: **20 AI answers/user/day**. Static FAQ and human-operator messages are not subject to this quota. Existing processing and operator-ticket deduplication remain in place.
+- AI quota: **20 AI question attempts/user/day**. Static FAQ and human-operator messages are not subject to this quota. Existing processing and operator-ticket deduplication remain in place.
 - Daily cleanup removes one-hour-expired context.
-- Tests: deterministic multilingual routing, invalid-R2 fail-closed behavior, budget opt-in and limits, one-hour context expiry, typing, 20 daily AI responses, 65 static FAQ messages without a quota, existing webhook/operator tests.
+- Tests: deterministic multilingual routing, invalid-R2 fail-closed behavior, budget opt-in and limits, one-hour context expiry, typing, 20 daily AI question attempts, 65 static FAQ messages without a quota, existing webhook/operator tests.
 - `wrangler.toml` references the dedicated named gateway, but the Worker has **not** been redeployed.
 
 ## Cloudflare preparation already completed
