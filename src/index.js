@@ -67,11 +67,11 @@ async function userContext(env, user, startPayload = null) {
   return { lang, source };
 }
 
-async function claimQuota(env, scope, maximum) {
+async function claimQuota(env, scope, maximum, period = dayKey()) {
   const result = await env.DB.prepare(
     "INSERT INTO quotas(scope,day,used) VALUES(?,?,1) " +
     "ON CONFLICT(scope,day) DO UPDATE SET used=used+1 WHERE used < ?"
-  ).bind(scope, dayKey(), maximum).run();
+  ).bind(scope, period, maximum).run();
   return Number(result.meta?.changes || 0) > 0;
 }
 
