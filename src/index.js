@@ -137,8 +137,11 @@ async function forwardToOperator(env, user, ctx, message = null) {
   }
   await env.DB.prepare("UPDATE tickets SET updated_at=? WHERE id=?")
     .bind(Math.floor(Date.now() / 1000), ticket.id).run();
-  // No automatic acknowledgement to the user. Only an operator's actual
-  // message is delivered while a ticket is open.
+  // Notify only when the ticket is first opened. Follow-up user messages
+  // are silently copied to the operator, without "message delivered" spam.
+  if (ticket.isNew) {
+    await notifyUser(env, user.id, (COPY[ctx.lang] || COPY.ru).opened);
+  }
 }
 
 async function telegramImage(env, message) {
@@ -278,6 +281,12 @@ async function handleAdmin(env, message) {
     await env.DB.prepare(
       "UPDATE tickets SET status='closed',updated_at=? WHERE id=? AND status='open'"
     ).bind(Math.floor(Date.now() / 1000), link.ticket_id).run();
+    await notifyUser(env, link.tg_id, (COPY[link.lang] || COPY.ru).closed);
+    await telegram(env, "sendMessage", {
+      chat_id: env.ADMIN_CHAT_ID,
+      text: "✅ Ticket #" + link.ticket_id + " closed.",
+      reply_to_message_id: message.message_id
+    });
     return;
   }
   if (link.status !== "open") return;
