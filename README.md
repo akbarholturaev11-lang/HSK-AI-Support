@@ -9,7 +9,7 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 ## Knowledge Base (R2)
 
 - Private R2 Standard bucket: `hsk-ai-support-kb` (Eastern Europe).
-- Production Support Worker now runs GitHub `main` commit `74d51cda61ebb99d7c0fe4c7e19c3b44b681ee97` (Worker v17 `3f9ed6d4-2782-4789-bcd3-46650d80ca01`). Private English R2 knowledge is retrieved via binding `KB`. Live Telegram end-to-end checks after the latest menu/routing fix remain open.
+- Production Support Worker now runs GitHub source commit `d73dcf9062ea4a66314179b42eb8aa7fff2f1d16` (Worker version `0e5b7037-27e1-4208-b3d0-669644b5b168`). Private English R2 knowledge is retrieved via binding `KB`. GitHub PRs #6 and #7 passed CI. Live Telegram end-to-end checks for language switching remain open.
 - First English-only, topic-specific files in R2: `knowledge/payments.json`, `subscriptions.json`, `accounts.json`, `android.json`, `pwa.json`, `telegram.json` and `general.json`.
 - `knowledge/sync_state.json` stores the last checked `HSK-AI-Bot/main` commit SHA. It was bootstrapped to `c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073` after verifying all seven R2 objects.
 - The active ChatGPT task **HSK AI KB Sync** is scheduled every four hours, checks changes in `HSK-AI-Bot/main`, and is configured to update changed English R2 topics. A synthetic Cloudflare R2 backup/replace/rollback test passed; a completed autonomous scheduled cycle under the updated rules has **not** been independently confirmed.
@@ -17,7 +17,7 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 
 ## V2 implementation deployed to production (2026-11-07)
 
-Latest production release: GitHub `main` commit `74d51cda61ebb99d7c0fe4c7e19c3b44b681ee97` deployed at **100%** as Worker v17 `3f9ed6d4-2782-4789-bcd3-46650d80ca01` (deployment `68300e0b-e1cd-4ac9-8903-6e181ec5d878`). Previous production version `40751a9e-8e0c-4616-8b6c-1b45e5e25675` retained for rollback. All existing Secret, AI, D1, R2 and plain-text bindings inherited under strict validation. **Only `/start` sends the four-category keyboard; FAQ, category callback, `/help` and AI answers are plain text. Human operator requires explicit `/operator` or an operator-button tap; `/start` closes an active operator ticket and returns to self-service.** Opening and closing notices remain; active chat has no delivery acknowledgement. GitHub 68/68 tests passed. Live Telegram E2E of this release still requires a user smoke test. MiniMax backup stays OFF due zero credits.
+Latest production release: source commit `d73dcf9062ea4a66314179b42eb8aa7fff2f1d16` deployed at **100%** as Worker version `0e5b7037-27e1-4208-b3d0-669644b5b168` (deployment `500f4c9b-3f6c-4de1-9b53-18f89abbbd8f`). Previous Worker version `f780747c-45f5-49a6-ac9f-19317252328b` retained for rollback. All existing Secret, AI, D1, R2 and plain-text bindings inherited under strict validation. **No language picker**: RU/TJ/UZ language inferred automatically from messages (Cyrillic and Latin cues, explicit language requests), stored in D1 and remembered for ambiguous short messages. Social greetings and language-change requests can be answered without R2, including localized fallback when AI is unavailable. Factual product/payment/account questions still require valid R2 knowledge or explicit human verification. **Only `/start` sends the four-category keyboard.** Human operator requires explicit `/operator` or an operator-button tap. GitHub Actions tests and Worker dry-run passed. Live Telegram E2E still requires a user smoke test. MiniMax backup stays OFF.
 
 - `src/knowledge.js`: keyword routing to at most two validated R2 English topic records. If a production R2 record is missing or malformed, fail closed and send a human support ticket; without the KB binding, questions fail closed to the operator; hardcoded fallback facts are not used in V2.
 - `src/ai.js`: R2-grounded short answers, language adaptation, native Gemma 4, and optional MiniMax M3.1 Flash backup on technical primary failure. Backup is **OFF by default**. It needs explicit `BACKUP_ENABLED`, `BACKUP_BILLING_APPROVED`, `BACKUP_SPEND_CAP_VERIFIED` and `AI_GATEWAY_ID` settings. It calls the supported `minimax/m3.1-flash` catalog model through Cloudflare Gateway; the earlier `support-backup` dynamic route was invalid and is not used. A model handoff/uncertain answer never triggers paid retries.
@@ -33,7 +33,7 @@ Latest production release: GitHub `main` commit `74d51cda61ebb99d7c0fe4c7e19c3b4
 
 ## Features
 
-- RU/TJ/UZ language and source detection from Telegram deep links; Telegram-language fallback.
+- RU/TJ/UZ automatic text-based language detection with persistence in D1; Telegram/deep-link locale is a fallback, not a language-selection UI.
 - Short FAQ and natural AI answers: 1–2 sentences, maximum 220 characters.
 - Native Telegram typing indicator during AI processing.
 - Current V2 Worker allows up to 20 AI questions per user daily and 600 global AI calls daily; static FAQ and human chat do not consume this AI quota.
