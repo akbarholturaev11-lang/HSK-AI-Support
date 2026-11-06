@@ -19,7 +19,7 @@ test("contextual link resend works for verified files; PWA home page is not pres
   assert.equal(chooseOfficialLink("PWA силкаси керак","", "uz",history),OFFICIAL_LINKS.iphonePwa);
   assert.equal(chooseOfficialLink("айфон иловасининг силкасини ташлаб беринг","", "uz"),OFFICIAL_LINKS.iphonePwa);
   assert.equal(appendOfficialLink("PWA ҳаволаси тасдиқланмаган.",{input:"PWA ссылка",lang:"uz"}),
-    "PWA ҳаволаси тасдиқланмаган.\\nhttps://hskai.app/iphone-pwa");
+    "PWA ҳаволаси тасдиқланмаган.\nhttps://hskai.app/iphone-pwa");
 });
 
 test("reject invented checkout, impersonation and unsupported URLs",()=>{
