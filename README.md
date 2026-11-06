@@ -30,7 +30,11 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 
 **1. Add BOT_TOKEN secret to Cloudflare.** Open Cloudflare Dashboard → Workers & Pages → hsk-ai-support → Settings → Variables and Secrets → Add. Type **Secret**, name BOT_TOKEN, value: token from Telegram BotFather. Never paste the bot token in GitHub or chat.
 
-The Worker will register its Telegram webhook using the secret already stored in Cloudflare. There is no need to run a separate Telegram API command.
+The Worker will register its Telegram webhook using the secret already stored in Cloudflare. For an immediate registration or live status check, open https://hsk-ai-support.hskaiiapp.workers.dev/activate . This one-tap endpoint is rate-limited, does not expose tokens, and reports Telegram delivery errors. Cloudflare Cron also checks automatically.
+
+**Security:** In Cloudflare Variables and Secrets, BOT_TOKEN must be type **Secret** (not Plain Text). Re-enter it securely if the variable was originally saved as Plain Text. Do not post the token in chat or GitHub.
+
+The FAQ and AI work even before ADMIN_CHAT_ID is added. Operator escalation becomes available after the private group ID is configured.
 
 **2. Create a private operator Telegram group**, add the HSK AI Support Bot, and send /chatid from a group administrator. The bot verifies administrator status and replies with the numeric group chat ID. If necessary use /chatid@YOUR_BOT_USERNAME.
 
