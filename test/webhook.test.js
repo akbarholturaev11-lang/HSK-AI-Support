@@ -845,3 +845,30 @@ test("Android download and Instagram questions return only verified clickable li
     assert.ok(!msgs.some(x=>x.includes("fake-hskai")));
   }finally{globalThis.fetch=previous;}
 });
+
+
+test("new /start or different FAQ topic clears stale account-only follow-up",async()=>{
+  const {env,conversations}=stub();
+  let aiCalls=0;
+  env.AI={run:async()=>{aiCalls++;return {response:JSON.stringify({action:"answer",answer:"Общая информация по Android."})}}};
+  const old=globalThis.fetch;
+  let number=6100;
+  globalThis.fetch=async()=>Response.json({ok:true,result:{message_id:number++}});
+  const from={id:6161,language_code:"ru"};
+  const start=(u)=>call(env,{update_id:u,message:{chat:{id:6161,type:"private"},from,message_id:u,text:"/start"}});
+  const reply=(u,text)=>call(env,{update_id:u,message:{chat:{id:6161,type:"private"},from,message_id:u,text}});
+  const option=(u,data)=>call(env,{update_id:u,callback_query:{id:"q"+u,from,message:{chat:{id:6161,type:"private"},message_id:u},data}});
+  try{
+    assert.equal((await start(6161)).status,200);
+    assert.equal((await option(6162,"help:account")).status,200);
+    assert.equal(conversations.length,2);
+    assert.equal((await start(6163)).status,200);
+    assert.equal(conversations.length,0);
+    assert.equal((await reply(6164,"андроид")).status,200);
+    assert.equal(aiCalls,1,"fresh start must not reuse old account follow-up");
+    assert.equal((await option(6165,"help:account")).status,200);
+    assert.equal(conversations.length>=2,true);
+    assert.equal((await option(6166,"help:payment")).status,200);
+    assert.equal(conversations.length,0,"switching FAQ topic clears former account context");
+  }finally{globalThis.fetch=old;}
+});
