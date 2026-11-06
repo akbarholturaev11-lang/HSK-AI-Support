@@ -109,7 +109,9 @@ async function forwardToOperator(env, user, ctx, message = null) {
     "\nLanguage: " + escapeHtml(ctx.lang) +
     "\nSource: " + escapeHtml(ctx.source) +
     "\nName: " + escapeHtml(limitText(user.first_name || "", 60)) +
-    "\n\n" + (detail ? escapeHtml(detail) : "👤 Operator requested / media attached");
+    "\n\n" + (detail ? escapeHtml(detail) : "👤 Operator requested / media attached") +
+    "\n\n↩️ <b>Как ответить:</b> нажмите «Ответить» на это сообщение и отправьте текст или фото." +
+    "\n✅ Для закрытия ответьте <code>/close</code> на этот тикет.";
   const adminMessage = await telegram(env, "sendMessage", {
     chat_id: env.ADMIN_CHAT_ID,
     text: header,
