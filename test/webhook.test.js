@@ -223,3 +223,32 @@ test("Cron registers webhook once using secret without exposing it", async () =>
   } finally { globalThis.fetch = original; }
 });
 
+
+test("group administrator can discover own support group ID without external bots", async () => {
+  const { env } = stub();
+  delete env.ADMIN_CHAT_ID;
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const method = String(url).split("/").pop();
+    const data = JSON.parse(init.body);
+    calls.push({ method, data });
+    return Response.json({
+      ok: true,
+      result: method === "getChatMember" ? { status: "administrator" } : { message_id: 950 }
+    });
+  };
+  try {
+    const update = { update_id: 401, message: {
+      chat: { id: -100234, type: "supergroup" },
+      from: { id: 98, is_bot: false },
+      message_id: 940, text: "/chatid"
+    } };
+    assert.equal((await call(env, update)).status, 200);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].method, "getChatMember");
+    assert.equal(calls[1].method, "sendMessage");
+    assert.match(calls[1].data.text, /-100234/);
+  } finally { globalThis.fetch = original; }
+});
+
