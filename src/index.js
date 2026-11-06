@@ -98,6 +98,10 @@ async function saveAdminLink(env, adminMessageId, ticketId) {
 }
 
 async function forwardToOperator(env, user, ctx, message = null) {
+  if (!env.ADMIN_CHAT_ID) {
+    await notifyUser(env, user.id, (COPY[ctx.lang] || COPY.ru).operatorUnavailable);
+    return;
+  }
   const ticket = await openTicket(env, user.id, ctx);
   const detail = message && (message.text || message.caption) ? limitText(message.text || message.caption, 1300) : "";
   const header = "<b>📨 HSK AI Support #" + ticket.id + "</b>" +
@@ -196,13 +200,6 @@ async function handlePrivate(env, message) {
   const copy = COPY[ctx.lang];
   if (start !== null || message.text === "/help") {
     await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
-    return;
-  }
-  if (!env.ADMIN_CHAT_ID) {
-    const pending = ctx.lang === "ru" ? "Поддержка настраивается. Попробуйте позже." :
-      ctx.lang === "tj" ? "Хадамоти дастгирӣ ҳоло танзим мешавад. Баъдтар кӯшиш кунед." :
-      "Ёрдам хизмати ҳозир созланяпти. Кейинроқ қайта ёзинг.";
-    await sendUser(env, user.id, pending);
     return;
   }
   if (!await claimQuota(env, "msg-user:" + user.id, 60)) return;
