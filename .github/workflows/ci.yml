@@ -13,3 +13,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm test
+      - name: Bundle Cloudflare Worker without deploying
+        if: github.event_name == 'pull_request'
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir=./dist-v2

@@ -34,3 +34,13 @@ CREATE TABLE IF NOT EXISTS service_settings (
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Short-lived AI dialog context; never store raw media or sensitive credentials.
+CREATE TABLE IF NOT EXISTS ai_conversation (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tg_id INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+  text TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_conversation_user_time ON ai_conversation(tg_id, created_at);

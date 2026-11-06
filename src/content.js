@@ -61,6 +61,9 @@ export function explicitFaq(text, lang) {
   const short = s.length < 65;
   if (!short) return null;
   const c = COPY[lang] || COPY.ru;
+  // No verified platform-specific sign-in steps in KB yet: ask for platform
+  // instead of letting the model invent Telegram ID / Google / PWA login steps.
+  if (/как (?:мне )?(?:войти|зайти)|как авториз|чӣ тавр.*(?:аккаунт|ҳисоб)|аккаунт.*қандай.*кир|(?:логин|вход|ворид|кириш).*(?:pwa|iphone|android)|(?:pwa|iphone|айфон).*?(?:вход|логин|кириш)/u.test(s)) return c.account;
   if (/^(оплата|подписка|платёж|платеж|пардохт|обуна|тўлов|тулов)$/.test(s)) return c.payment;
   if (/^(аккаунт|вход|логин|ҳисоб|воридшавӣ|кириш)$/.test(s)) return c.account;
   if (/^(ошибка|баг|хато|хатогӣ|не работает)$/.test(s)) return c.bug;

@@ -75,8 +75,10 @@ function stub() {
     }
   }; } }; } };
   return {
-    env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake" },
-    calls, users, tickets, links, settings
+    env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake",
+      KB: { async get(key) {const topic=key.slice(10,-5);return {async json(){return {topic,source_commit:"c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073",facts:["HSK AI is a Chinese language learning product."]}}}}}
+    },
+    calls, users, tickets, links, settings, quotas
   };
 }
 
@@ -354,4 +356,207 @@ test("ticket with no Telegram username retains user ID and safe fallback", async
     assert.match(calls[0].text, /Telegram: username not set/);
     assert.match(calls[0].text, /ID: <code>108<\/code>/);
   } finally { globalThis.fetch = previous; }
+});
+
+
+test("V2 image screenshot is sent to Vision with R2 facts, not saved in knowledge", async () => {
+  const {env}=stub();
+  const baseSha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  const objects=[];
+  env.KB={get:async key=>{
+    objects.push(key);
+    return {json:async()=>({topic:"general",source_commit:baseSha,facts:["HSK AI teaches Chinese."]})};
+  }};
+  const aiRequests=[];
+  env.AI={run:async(model,request)=>{
+    aiRequests.push({model,request});
+    return {response:JSON.stringify({action:"answer",answer:"Проверьте настройки приложения."})};
+  }};
+  const calls=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();
+    if(method==="getFile")return Response.json({ok:true,result:{file_path:"photos/test.jpg",file_size:6}});
+    if(String(url).includes("/file/bot")){
+      return new Response(Uint8Array.from([255,216,255,1,2,3]),{headers:{"content-type":"image/jpeg"}});
+    }
+    calls.push({method,body:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:121}});
+  };
+  try{
+    const update={update_id:9901,message:{chat:{id:991,type:"private"},
+      from:{id:991,language_code:"ru"},message_id:9901,
+      photo:[{file_id:"f1",file_size:6}]}};
+    assert.equal((await call(env,update)).status,200);
+    assert.deepEqual(objects,["knowledge/general.json"]);
+    assert.equal(aiRequests.length,1);
+    assert.ok(aiRequests[0].request.messages.at(-1).content.some(part => part.type==="image_url" && part.image_url.url.startsWith("data:image/jpeg;base64,")));
+    assert.match(aiRequests[0].request.messages[0].content,/HSK AI teaches Chinese/);
+    assert.ok(calls.some(c=>c.method==="sendMessage"&&c.body.text==="Проверьте настройки приложения."));
+    assert.ok(!calls.some(c=>c.method==="copyMessage"));
+  } finally {globalThis.fetch=original;}
+});
+
+test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
+  const {env,quotas}=stub();const calls=[];
+  let aiCalls=0;
+  env.KB={get:async()=>null};
+  env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
+  const orig=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:calls.length+500}});
+  };
+  try{
+    const update={update_id:9902,message:{chat:{id:992,type:"private"},from:{id:992,language_code:"ru"},
+      message_id:9902,text:"Не могу войти в аккаунт"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(aiCalls,0);
+    assert.equal(quotas.size,1,"only the user message rate limit is charged, not AI quota");
+    assert.ok(calls.some(x=>x.data.chat_id==="-100234"&&x.method==="sendMessage"));
+  }finally{globalThis.fetch=orig;}
+});
+
+test("V2 technical primary failure attempts configured MiniMax and then answers",async()=>{
+  const {env,quotas}=stub();
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["Chinese lessons are available."]})})};
+  env.BACKUP_ENABLED="true";
+  env.BACKUP_BILLING_APPROVED="true"; // simulated approval in mock only
+  env.BACKUP_SPEND_CAP_VERIFIED="true"; // mocked: live spend cap not enabled
+  env.AI_GATEWAY_ID="hsk-ai-support";
+  env.AI_GATEWAY_BACKUP_ROUTE="support-backup";
+  let calls=0;
+  env.AI={run:async(model,request,options)=>{
+    calls++;
+    if(model.startsWith("@cf/")) throw new Error("exhausted");
+    assert.equal(model,"dynamic/support-backup");
+    assert.equal(options.gateway.id,"hsk-ai-support");
+    return {choices:[{message:{content:JSON.stringify({action:"answer",answer:"Откройте раздел курса."})}}]};
+  }};
+  const tg=[];
+  const orig=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    tg.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:1001}});
+  };
+  try{
+    const update={update_id:9903,message:{chat:{id:993,type:"private"},from:{id:993,language_code:"ru"},
+      message_id:9903,text:"Что такое HSK AI?"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(calls,2);
+    assert.equal(quotas.get("backup-month:"+new Date().toISOString().slice(0,7)),1);
+    assert.ok(tg.some(x=>x.data.text==="Откройте раздел курса."));
+  }finally{globalThis.fetch=orig;}
+});
+
+test("V2 payment proof image bypasses AI and reaches human operator",async()=>{
+  const {env}=stub();
+  let aiCalls=0;
+  env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
+  const tg=[];
+  const orig=globalThis.fetch;
+  let nextId=1500;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();
+    tg.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:nextId++}});
+  };
+  try{
+    const update={update_id:9904,message:{chat:{id:994,type:"private"},from:{id:994,language_code:"ru"},
+      message_id:9904,caption:"Вот чек оплаты",photo:[{file_id:"photo",file_size:100}]}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(aiCalls,0);
+    assert.ok(tg.some(x=>x.method==="copyMessage"&&x.data.message_id===9904));
+  }finally{globalThis.fetch=orig;}
+});
+
+
+test("V2 refuses clearly Uzbek text when Tajik reply was required",async()=>{
+  const {env,tickets}=stub();
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["HSK AI helps learn Chinese."]})})};
+  env.AI={run:async(model,payload)=>{
+    assert.match(payload.messages[0].content,/MANDATORY REPLY LANGUAGE: Tajik/);
+    return {response:JSON.stringify({action:"answer",answer:"HSK AI — бу хитой тилини ўрганиш иловаси."})};
+  }};
+  const calls=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:1002+calls.length}});
+  };
+  try{
+    const update={update_id:9910,message:{chat:{id:9910,type:"private"},from:{id:9910,language_code:"ru"},message_id:10,text:"HSK AI чист?"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(tickets.size,1,"incorrect-language answer must defer to operator");
+    assert.ok(!calls.some(c=>c.method==="sendMessage" && /хитой тилини ўрганиш/.test(c.data.text)));
+  }finally{globalThis.fetch=original;}
+});
+
+
+test("V2 paid MiniMax cannot run without separate approval and a verified Gateway route",async()=>{
+  const {env,tickets}=stub();
+  env.AI_MODEL="@cf/google/gemma-4-26b-a4b-it";
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["Chinese lessons are available."]})})};
+  env.BACKUP_ENABLED="true";
+  let attempts=[];
+  env.AI={run:async(model)=>{
+    attempts.push(model);
+    throw new Error("primary quota exceeded");
+  }};
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>Response.json({ok:true,result:{message_id:1800}});
+  try{
+    const update={update_id:9920,message:{chat:{id:9920,type:"private"},from:{id:9920,language_code:"ru"},message_id:20,text:"Что такое HSK AI?"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.deepEqual(attempts,["@cf/google/gemma-4-26b-a4b-it"],"never call paid provider without explicit billing approval");
+    assert.equal(tickets.size,1);
+  }finally{globalThis.fetch=original;}
+});
+
+
+test("V2 blocks internal PWA config and personal payment status",async()=>{
+  const {env,tickets}=stub();
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async key=>({json:async()=>({topic:key.slice(10,-5),source_commit:sha,facts:["PWA_AUTH_ENABLED controls PWA sign in."]})})};
+  let aiCalls=0;
+  env.AI={run:async()=>{
+    aiCalls++;
+    return {response:JSON.stringify({action:"answer",answer:"Вход зависит от PWA_AUTH_ENABLED."})};
+  }};
+  const telegramCalls=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    telegramCalls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:2000+telegramCalls.length}});
+  };
+  try{
+    const unsafe={update_id:9980,message:{chat:{id:9980,type:"private"},from:{id:9980,language_code:"ru"},message_id:80,text:"PWA авторизация сейчас активна?"}};
+    assert.equal((await call(env,unsafe)).status,200);
+    assert.equal(aiCalls,1);
+    assert.equal(tickets.size,1);
+    assert.ok(!telegramCalls.some(x=>x.method==="sendMessage"&&String(x.data.text).includes("PWA_AUTH_ENABLED")));
+    const payment={update_id:9981,message:{chat:{id:9981,type:"private"},from:{id:9981,language_code:"uz"},message_id:81,text:"Менинг тўлов чеким тасдиқланганми?"}};
+    assert.equal((await call(env,payment)).status,200);
+    assert.equal(aiCalls,1,"personal payment status must not reach AI");
+    assert.equal(tickets.size,2);
+  }finally{globalThis.fetch=original;}
+});
+
+
+test("V2 missing R2 binding fails closed instead of using stale local FACTS",async()=>{
+  const {env,tickets}=stub();
+  delete env.KB;
+  let aiCalls=0;
+  env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
+  const orig=globalThis.fetch;
+  globalThis.fetch=async()=>Response.json({ok:true,result:{message_id:3000}});
+  try{
+    const u={update_id:9990,message:{chat:{id:9990,type:"private"},from:{id:9990,language_code:"ru"},message_id:90,text:"Что такое HSK AI?"}};
+    assert.equal((await call(env,u)).status,200);
+    assert.equal(aiCalls,0);
+    assert.equal(tickets.size,1);
+  }finally{globalThis.fetch=orig;}
 });

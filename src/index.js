@@ -1,5 +1,6 @@
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, parseAiDecision } from "./logic.js";
-import { COPY, FACTS, menu, explicitFaq } from "./content.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification } from "./logic.js";
+import { COPY, menu, explicitFaq } from "./content.js";
+import { generateSupportAnswer } from "./ai.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 const fail = (status) => new Response("unavailable", { status });
@@ -66,11 +67,11 @@ async function userContext(env, user, startPayload = null) {
   return { lang, source };
 }
 
-async function claimQuota(env, scope, maximum) {
+async function claimQuota(env, scope, maximum, period = dayKey()) {
   const result = await env.DB.prepare(
     "INSERT INTO quotas(scope,day,used) VALUES(?,?,1) " +
     "ON CONFLICT(scope,day) DO UPDATE SET used=used+1 WHERE used < ?"
-  ).bind(scope, dayKey(), maximum).run();
+  ).bind(scope, period, maximum).run();
   return Number(result.meta?.changes || 0) > 0;
 }
 
@@ -137,62 +138,38 @@ async function forwardToOperator(env, user, ctx, message = null) {
   await notifyUser(env, user.id, ticket.isNew ? COPY[ctx.lang].opened : COPY[ctx.lang].active);
 }
 
-async function askAi(env, userId, lang, input) {
-  if (!env.AI && (!env.AI_API_KEY || !env.AI_MODEL)) return null;
-  const endpoint = env.AI_BASE_URL || "https://api.openai.com/v1/chat/completions";
-  if (!endpoint.startsWith("https://")) return null;
-  if (!await claimQuota(env, "ai-user:" + userId, 3)) return null;
-  if (!await claimQuota(env, "ai-global", 60)) return null;
-  const system = [
-    "You are the minimal HSK AI product support assistant, not a tutor.",
-    "Reply in " + (lang === "tj" ? "Tajik, using Cyrillic script" : lang === "uz" ? "Uzbek, using Cyrillic script" : "Russian, using Cyrillic script") + ". Write like a helpful human, not an instruction manual.",
-    "Use 1 or 2 short sentences, at most 220 characters total. No lists, headings, long explanations or formal introductions.",
-    "Ask only one simple follow-up question if needed. Do not use markdown or more than one emoji.",
-    "Only the following facts are confirmed:",
-    ...FACTS.map((item) => "- " + item),
-    "Never invent procedures or details absent from these facts.",
-    "If the user's issue needs checking their account, subscription, payment or a bug, hand off.",
-    'Output only valid JSON: {"action":"answer","answer":"..."} or {"action":"handoff","answer":""}.'
-  ].join("\n");
-  await showTyping(env, userId);
-  const typingTimer = setInterval(() => { void showTyping(env, userId); }, 4000);
+async function telegramImage(env, message) {
+  const photo = Array.isArray(message.photo) ? message.photo.at(-1) : null;
+  const doc = message.document;
+  const target = photo || (doc && ["image/jpeg","image/png"].includes(doc.mime_type) ? doc : null);
+  if (!target?.file_id || Number(target.file_size||0) > 3_500_000) return null;
+  const file = await telegram(env,"getFile",{file_id:target.file_id},5000);
+  const path = String(file?.file_path || "");
+  if (!/^[A-Za-z0-9_./-]{1,240}$/.test(path) || path.includes("..") ||
+      Number(file?.file_size||0)>3_500_000) return null;
+  const result=await fetch("https://api.telegram.org/file/bot"+env.BOT_TOKEN+"/"+path,{
+    signal:AbortSignal.timeout(6000)
+  });
+  if(!result.ok) return null;
+  const contentLength=Number(result.headers.get("content-length") || 0);
+  if(contentLength > 3_500_000) return null;
+  const bytes=new Uint8Array(await result.arrayBuffer());
+  if(!bytes.length||bytes.length>3_500_000) return null;
+  // Use the actual image header rather than arbitrary user supplied MIME.
+  const jpeg=bytes[0]===0xff && bytes[1]===0xd8 && bytes[2]===0xff;
+  const png=bytes[0]===0x89 && bytes[1]===0x50 && bytes[2]===0x4e && bytes[3]===0x47;
+  if(!jpeg&&!png) return null;
+  let binary="";
+  for(let i=0;i<bytes.length;i+=16384) binary+=String.fromCharCode(...bytes.slice(i,i+16384));
+  return "data:image/"+(jpeg?"jpeg":"png")+";base64,"+btoa(binary);
+}
+
+async function askAi(env, userId, lang, input, imageDataUrl = null) {
+  if (!env.AI && !(env.AI_API_KEY && env.AI_MODEL)) return null;
+  await showTyping(env,userId);
+  const typingTimer=setInterval(()=>{void showTyping(env,userId);},4000);
   try {
-    if (env.AI) {
-      const output = await env.AI.run(
-        env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
-        {
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: limitText(input, 650) }
-          ],
-          max_tokens: 160,
-          temperature: 0.1,
-          chat_template_kwargs: { enable_thinking: false }
-        }
-      );
-      const content = output?.response ?? output?.result?.response ??
-        output?.choices?.[0]?.message?.content ?? null;
-      const decision = parseAiDecision(content);
-      return decision?.action === "answer" ? decision.answer : null;
-    }
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", "authorization": "Bearer " + env.AI_API_KEY },
-      body: JSON.stringify({
-        model: env.AI_MODEL,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: limitText(input, 650) }
-        ],
-        max_tokens: 160
-      }),
-      signal: AbortSignal.timeout(6500)
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const answer = data?.choices?.[0]?.message?.content;
-    const decision = parseAiDecision(answer);
-    return decision?.action === "answer" ? decision.answer : null;
+    return await generateSupportAnswer(env,{userId,lang,input,imageDataUrl,claimQuota});
   } catch {
     console.warn("support_ai_unavailable");
     return null;
@@ -221,12 +198,35 @@ async function handlePrivate(env, message) {
     await forwardToOperator(env, user, ctx, message);
     return;
   }
+  if (!message.text && (message.photo?.length || message.document)) {
+    const caption=limitText(message.caption || "",1300);
+    // Keep sensitive payment proofs and credential photos within human support.
+    if (shouldAvoidAi(caption) || requiresHumanVerification(caption) || /чек|receipt|bank\s*card|карта\s*банк|платёжн(?:ый|ая)\s*документ/iu.test(caption)) {
+      await forwardToOperator(env,user,ctx,message);
+      return;
+    }
+    let image=null;
+    try {image=await telegramImage(env,message);} catch {image=null;}
+    const answer=image ? await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image) : null;
+    if(answer) {
+      await sendUser(env,user.id,answer,{inline_keyboard:[[{
+        text:copy.buttons[3],callback_data:"help:operator"
+      }]]});
+      return;
+    }
+    await forwardToOperator(env,user,ctx,message);
+    return;
+  }
   if (!message.text) {
-    await forwardToOperator(env, user, ctx, message);
+    await forwardToOperator(env,user,ctx,message);
     return;
   }
   const text = limitText(message.text, 1300);
   if (!text) return;
+  if (requiresHumanVerification(text)) {
+    await forwardToOperator(env,user,ctx,message);
+    return;
+  }
   const faq = explicitFaq(text, ctx.lang);
   if (faq) {
     await sendUser(env, user.id, faq, menu(ctx.lang));
@@ -432,6 +432,13 @@ export default {
   async scheduled(controller, env) {
     if (controller.cron === "*/5 * * * *") {
       await registerWebhookOnce(env);
+      // Context must expire close to the one-hour TTL; daily prune is too late.
+      try {
+        await env.DB.prepare("DELETE FROM ai_conversation WHERE created_at < ?")
+          .bind(Math.floor(Date.now()/1000)-3600).run();
+      } catch {
+        // Schema migration is deployed separately; don't break the webhook cron.
+      }
       return;
     }
     if (controller.cron === "0 3 * * *") {
@@ -439,7 +446,9 @@ export default {
       const now = Math.floor(Date.now() / 1000);
       await env.DB.batch([
         env.DB.prepare("DELETE FROM processed_updates WHERE created_at < ?").bind(now - 7 * 86400),
-        env.DB.prepare("DELETE FROM quotas WHERE day < ?").bind(dayKey(Date.now() - 3 * 86400000)),
+        env.DB.prepare("DELETE FROM quotas WHERE length(day)=10 AND day < ?").bind(dayKey(Date.now() - 3 * 86400000)),
+        env.DB.prepare("DELETE FROM quotas WHERE length(day)=7 AND day < ?").bind(new Date(Date.now() - 62 * 86400000).toISOString().slice(0,7)),
+        env.DB.prepare("DELETE FROM ai_conversation WHERE created_at < ?").bind(now - 3600),
         env.DB.prepare("DELETE FROM tickets WHERE updated_at < ?").bind(now - 90 * 86400),
         env.DB.prepare("DELETE FROM admin_links WHERE ticket_id NOT IN (SELECT id FROM tickets)")
       ]);

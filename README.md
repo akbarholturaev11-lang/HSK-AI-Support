@@ -15,6 +15,22 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 - The active ChatGPT task **HSK AI KB Sync** is scheduled every four hours, checks changes in GitHub `main`, and is configured to update **only changed** English R2 topic files directly through Cloudflare. The first *future scheduled* run has not yet been independently verified.
 - No GitHub Actions upload workflow and no separate S3 credentials are required for this connector-based path. The currently configured GitHub Actions workflow runs code tests only.
 
+## V2 staging branch — not deployed
+
+This branch implements the V2 code path; **the currently deployed Worker and main branch are unchanged**.
+
+- `src/knowledge.js`: keyword routing to at most two validated R2 English topic records. If a production R2 record is missing or malformed, fail closed and send a human support ticket; without the KB binding, questions fail closed to the operator; hardcoded fallback facts are not used in V2.
+- `src/ai.js`: R2-grounded short answers, language adaptation, native Gemma 4, and optional MiniMax M3.1 Flash backup on technical primary failure. Backup is **OFF by default**. It needs explicit `BACKUP_ENABLED`, `BACKUP_BILLING_APPROVED`, `BACKUP_SPEND_CAP_VERIFIED`, `AI_GATEWAY_ID` and `AI_GATEWAY_BACKUP_ROUTE` settings; Gateway currently has no deployed routes. A model handoff/uncertain answer never triggers paid retries.
+- `src/index.js`: photo/screenshot processing for Telegram photo or image document and existing `copyMessage` handoff. Unreadable/large/sensitive-caption images go directly to an operator. Gemma 4's Cloudflare REST endpoint accepted a 64x64 PNG as an OpenAI-compatible `image_url` data URI (2026-11-06) and answered the visible-color question correctly; the full deployed Worker binding and MiniMax image path still require end-to-end staging tests.
+- `src/conversation.js` and `schema.sql`: last five redacted dialog messages from the preceding hour; cron prunes older context at five-minute intervals. D1 additive table/index migration is applied and verified using a synthetic test exchange. V2 Worker has **not** deployed and live bot does not use the table yet.
+- 20 AI questions per user per day; static FAQ and human operator chat do not count. Existing production quota remains unchanged until deployment.
+- Budget **intent**: 20 fallback calls/day and 300/month as a conservative provisional estimate, **not** a verified hard USD cap. Before enabling paid MiniMax, enforce and independently test Cloudflare Unified Billing spend controls ($0.20/day and $3/month), disable auto top-up, and review telemetry.
+- GitHub CI includes 30 RU/TJ/UZ keyword-routing examples and mocked media/provider tests; 64 Node tests passed and Wrangler bundling with `--dry-run` succeeded. Additionally, 30 real Gemma 4 requests returned valid JSON under 220 characters, but some had unsupported instructions; deterministic handoff and output protections were added. See `docs/V2_QA_2026-11-06.md` for limitations.
+- Scheduled `HSK AI KB Sync` instructions use backup-before-replace and `main`-first KB. Synthetic R2 backup/replace/rollback in temporary QA objects passed. An independently completed scheduled agent cycle remains unverified.
+- Security blocker: production `BOT_TOKEN` is currently stored as a Cloudflare `plain_text` binding. Migrate it to `secret_text` without exposing the value and verify webhook health **before V2 production release**.
+
+**Release sequence:** D1 schema applied and synthetic R2 rollback tested. Still verify independent KB agent run, real Telegram end-to-end Vision/handoff, paid-route and spending safeguards, and token Secret migration before any production deployment. Paid billing and production deployment require explicit owner approval. A GitHub merge alone does not deploy this Worker.
+
 ## Features
 
 - RU/TJ/UZ language and source detection from Telegram deep links; Telegram-language fallback.

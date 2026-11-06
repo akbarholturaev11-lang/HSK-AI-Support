@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, dayKey, isClose, shouldAvoidAi, parseAiDecision } from "../src/logic.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, parseAiDecision } from "../src/logic.js";
 import { explicitFaq, menu } from "../src/content.js";
 
 test("Deep links select language and source, reject unexpected values", () => {
@@ -46,4 +46,22 @@ test("long robotic AI answers are rejected rather than sent", () => {
     parseAiDecision(JSON.stringify({ action: "answer", answer: "Да, помогу! Уточните, что не работает." })),
     { action: "answer", answer: "Да, помогу! Уточните, что не работает." }
   );
+});
+
+
+test("V2 high-risk personal payment/account questions require an operator",()=>{
+  assert.equal(requiresHumanVerification("Мой чек подтверждает оплату?"),true);
+  assert.equal(requiresHumanVerification("Оё чеки ман пардохтро тасдиқ мекунад?"),true);
+  assert.equal(requiresHumanVerification("Менинг тўлов чеким тасдиқланганми?"),true);
+  assert.equal(requiresHumanVerification("Мой вход не работает, проверьте аккаунт"),true);
+  assert.equal(requiresHumanVerification("Аккаунтим очилмаяпти, текшириб беринг"),true);
+  assert.equal(requiresHumanVerification("Можно оплатить через Alipay?"),false);
+  assert.equal(requiresHumanVerification("Как войти в аккаунт?"),false);
+  assert.equal(requiresHumanVerification("HSK AI нима?"),false);
+});
+
+test("V2 generic sign-in questions get safe localized FAQ instead of invented steps",()=>{
+  assert.match(explicitFaq("Как войти в аккаунт?","ru"),/Аккаунт и вход/);
+  assert.match(explicitFaq("Чӣ тавр ба аккаунт дароям?","tj"),/Ҳисоб ва воридшавӣ/);
+  assert.match(explicitFaq("Аккаунтга қандай кираман?","uz"),/Аккаунтга кириш/);
 });
