@@ -50,6 +50,6 @@ export function parseAiDecision(content) {
   if (data.action === "handoff") return { action: "handoff" };
   if (data.action !== "answer" || typeof data.answer !== "string") return null;
   const answer = data.answer.trim();
-  if (answer.length < 5 || answer.length > 700) return null;
+  if (answer.length < 5 || answer.length > 220) return null;
   return { action: "answer", answer };
 }
