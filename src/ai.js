@@ -22,7 +22,8 @@ function promptForSupport(lang, facts) {
     "If a user has just chosen Account/login and then names a platform (Android/PWA/etc), stay on the login problem. Do not switch to downloading or installing the app.",
     "Never invent a web address, even if the user asks for one. Verified URLs are added separately by our application.",
     "If information is missing, uncertain or account/payment-specific, output handoff. Never claim a payment was approved or a bug was fixed from a screenshot.",
-    "If screenshot is attached, identify only visible UI/error and use provided facts. Never infer private account status.",
+    "If screenshot or photo is attached, identify only visible UI/error and use provided facts. Never infer private account status.",
+    "If user criticizes a UI, acknowledge the feedback naturally, briefly mention a visual issue you can truly see, and ask one focused question. This is not an account-verification request. Do not pretend feedback was saved, forwarded to developers, or already fixed.",
     'Return JSON only: {"action":"answer","answer":"..."} or {"action":"handoff","answer":""}.'
   ].join("\n");
 }
@@ -59,7 +60,7 @@ async function primaryProvider(env, messages, imageDataUrl) {
     // Both selected models use OpenAI-compatible image_url message parts.
     return env.AI.run(env.AI_MODEL || PRIMARY_MODEL, {
       messages,
-      max_tokens:160,
+      max_tokens:imageDataUrl ? 320 : 160,
       temperature:0.1,
       chat_template_kwargs:{enable_thinking:false}
     });
@@ -70,7 +71,7 @@ async function primaryProvider(env, messages, imageDataUrl) {
   const response=await fetch(endpoint,{
     method:"POST",
     headers:{"content-type":"application/json",authorization:"Bearer "+env.AI_API_KEY},
-    body:JSON.stringify({model:env.AI_MODEL,messages,max_tokens:160}),
+    body:JSON.stringify({model:env.AI_MODEL,messages,max_tokens:imageDataUrl ? 320 : 160}),
     signal:AbortSignal.timeout(6500)
   });
   if (!response.ok) throw new Error("primary_http_"+response.status);
