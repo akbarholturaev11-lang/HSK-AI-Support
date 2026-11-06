@@ -51,7 +51,7 @@ export function selectKnowledgeTopics(input, maximum = 2) {
   const hits = KNOWLEDGE_TOPICS.map((topic, order) => ({
     topic, order, score: TERMS[topic].reduce((count, re) => count + Number(re.test(normalized)), 0)
   })).filter(x => x.score > 0).sort((a, b) => b.score - a.score || a.order - b.order);
-  if (!hits.length) return ["general"];
+  if (!hits.length) return [];
   // General facts are a low-priority fallback, not a replacement for a specific topic.
   const specific = hits.filter(x => x.topic !== "general");
   const selected = (specific.length ? specific : hits).slice(0, Math.min(2, Math.max(1, maximum)));
