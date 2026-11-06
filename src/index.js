@@ -98,44 +98,47 @@ async function saveAdminLink(env, adminMessageId, ticketId) {
   ).bind(adminMessageId, ticketId).run();
 }
 
+// One compact ticket card on open. Subsequent messages are copied as-is,
+// so the operator sees the actual user message without repetitive metadata.
 async function forwardToOperator(env, user, ctx, message = null) {
   if (!env.ADMIN_CHAT_ID) {
     await notifyUser(env, user.id, (COPY[ctx.lang] || COPY.ru).operatorUnavailable);
     return;
   }
   const ticket = await openTicket(env, user.id, ctx);
-  const detail = message && (message.text || message.caption) ? limitText(message.text || message.caption, 1300) : "";
-  // Username comes from the Telegram user object, never from user-authored text.
-  const username = /^[A-Za-z0-9_]{3,32}$/.test(String(user.username || "")) ?
-    user.username : null;
-  const usernameLine = username ?
-    "\nTelegram: <a href=\"https://t.me/" + username + "\">@" + username + "</a>" :
-    "\nTelegram: username not set";
-  const header = "<b>📨 HSK AI Support #" + ticket.id + "</b>" +
-    "\nID: <code>" + user.id + "</code>" +
-    usernameLine +
-    "\nLanguage: " + escapeHtml(ctx.lang) +
-    "\nSource: " + escapeHtml(ctx.source) +
-    "\nName: " + escapeHtml(limitText(user.first_name || "", 60)) +
-    "\n\n" + (detail ? escapeHtml(detail) : "👤 Operator requested / media attached") +
-    "\n\n↩️ <b>Как ответить:</b> нажмите «Ответить» на это сообщение и отправьте текст или фото." +
-    "\n✅ Для закрытия ответьте <code>/close</code> на этот тикет.";
-  const adminMessage = await telegram(env, "sendMessage", {
-    chat_id: env.ADMIN_CHAT_ID,
-    text: header,
-    parse_mode: "HTML"
-  });
-  await saveAdminLink(env, adminMessage.message_id, ticket.id);
-  if (message && !message.text && message.message_id) {
-    const forwarded = await telegram(env, "copyMessage", {
+  const detail = message && (message.text || message.caption) ?
+    limitText(message.text || message.caption, 1300) : "";
+  if (ticket.isNew) {
+    const username = /^[A-Za-z0-9_]{3,32}$/.test(String(user.username || "")) ?
+      user.username : null;
+    const displayName = username ? "@" + username : limitText(user.first_name || "User", 60);
+    const link = username ? "https://t.me/" + username : "tg://user?id=" + user.id;
+    const label = '<a href="' + link + '"><b>' + escapeHtml(displayName) + '</b></a>';
+    const requestText = detail || (message && !message.text ? "📎 Медиа" : "Оператор керак");
+    const header = "👤 " + label + " · <code>" + escapeHtml(ctx.lang) + "</code>" +
+      "\n<code>/close</code>" +
+      "\n\n<blockquote>" + escapeHtml(requestText) + "</blockquote>";
+    const adminMessage = await telegram(env, "sendMessage", {
+      chat_id: env.ADMIN_CHAT_ID,
+      text: header,
+      parse_mode: "HTML"
+    });
+    await saveAdminLink(env, adminMessage.message_id, ticket.id);
+  }
+  // Media must be copied to preserve the actual photo/document. For an
+  // existing ticket, copy every new message without creating another header.
+  if (message?.message_id && (!ticket.isNew || !message.text)) {
+    const copied = await telegram(env, "copyMessage", {
       chat_id: env.ADMIN_CHAT_ID,
       from_chat_id: user.id,
       message_id: message.message_id
     });
-    await saveAdminLink(env, forwarded.message_id, ticket.id);
+    await saveAdminLink(env, copied.message_id, ticket.id);
   }
-  await env.DB.prepare("UPDATE tickets SET updated_at=? WHERE id=?").bind(Math.floor(Date.now() / 1000), ticket.id).run();
-  await notifyUser(env, user.id, ticket.isNew ? COPY[ctx.lang].opened : COPY[ctx.lang].active);
+  await env.DB.prepare("UPDATE tickets SET updated_at=? WHERE id=?")
+    .bind(Math.floor(Date.now() / 1000), ticket.id).run();
+  // No automatic acknowledgement to the user. Only an operator's actual
+  // message is delivered while a ticket is open.
 }
 
 async function telegramImage(env, message) {
@@ -275,12 +278,6 @@ async function handleAdmin(env, message) {
     await env.DB.prepare(
       "UPDATE tickets SET status='closed',updated_at=? WHERE id=? AND status='open'"
     ).bind(Math.floor(Date.now() / 1000), link.ticket_id).run();
-    await notifyUser(env, link.tg_id, COPY[link.lang]?.closed || COPY.ru.closed);
-    await telegram(env, "sendMessage", {
-      chat_id: env.ADMIN_CHAT_ID,
-      text: "✅ Ticket #" + link.ticket_id + " closed.",
-      reply_to_message_id: message.message_id
-    });
     return;
   }
   if (link.status !== "open") return;
