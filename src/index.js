@@ -125,7 +125,7 @@ async function forwardToOperator(env, user, ctx, message = null) {
 }
 
 async function askAi(env, userId, lang, input) {
-  if (!env.AI_API_KEY || !env.AI_MODEL) return null;
+  if (!env.AI && (!env.AI_API_KEY || !env.AI_MODEL)) return null;
   const endpoint = env.AI_BASE_URL || "https://api.openai.com/v1/chat/completions";
   if (!endpoint.startsWith("https://")) return null;
   if (!await claimQuota(env, "ai-user:" + userId, 3)) return null;
@@ -144,6 +144,23 @@ async function askAi(env, userId, lang, input) {
   await showTyping(env, userId);
   const typingTimer = setInterval(() => { void showTyping(env, userId); }, 4000);
   try {
+    if (env.AI) {
+      const output = await env.AI.run(
+        env.AI_MODEL || "@cf/zai-org/glm-4.7-flash",
+        {
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: limitText(input, 650) }
+          ],
+          max_tokens: 160,
+          temperature: 0.2
+        }
+      );
+      const content = output?.response ?? output?.result?.response ??
+        output?.choices?.[0]?.message?.content ?? null;
+      const decision = parseAiDecision(content);
+      return decision?.action === "answer" ? decision.answer : null;
+    }
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json", "authorization": "Bearer " + env.AI_API_KEY },
