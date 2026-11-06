@@ -21,7 +21,9 @@ function promptForSupport(lang, facts) {
     "Do not mention internal code variables, feature flags, database schemas, canonical IDs, or implementation details to users. If the only facts are internal, hand off.",
     "If a user has just chosen Account/login and then names a platform (Android/PWA/etc), stay on the login problem. Do not switch to downloading or installing the app.",
     "Never invent a web address, even if the user asks for one. Verified URLs are added separately by our application.",
-    "If information is missing, uncertain or account/payment-specific, output handoff. Never claim a payment was approved or a bug was fixed from a screenshot.",
+    "If a specific account or payment status needs verification, suggest a human operator. For general questions, give the most useful safe answer instead of refusing or repeating a clarification.",
+    "For a request for an official link, answer briefly and let the application attach its verified URL. Do not ask the user to rephrase.",
+    "Use recent turns to understand short follow-up requests. Do not repeat the same clarification twice.",
     "If screenshot or photo is attached, identify only visible UI/error and use provided facts. Never infer private account status.",
     "If user criticizes a UI, acknowledge the feedback naturally, briefly mention a visual issue you can truly see, and ask one focused question. This is not an account-verification request. Do not pretend feedback was saved, forwarded to developers, or already fixed.",
     'Return JSON only: {"action":"answer","answer":"..."} or {"action":"handoff","answer":""}.'
@@ -61,7 +63,7 @@ async function primaryProvider(env, messages, imageDataUrl) {
     return env.AI.run(env.AI_MODEL || PRIMARY_MODEL, {
       messages,
       max_tokens:imageDataUrl ? 320 : 160,
-      temperature:0.1,
+      temperature:0.35,
       chat_template_kwargs:{enable_thinking:false}
     });
   }
