@@ -513,3 +513,32 @@ test("V2 paid MiniMax cannot run without separate approval and a verified Gatewa
     assert.equal(tickets.size,1);
   }finally{globalThis.fetch=original;}
 });
+
+
+test("V2 blocks internal PWA config and personal payment status",async()=>{
+  const {env,tickets}=stub();
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async()=>({json:async()=>({topic:"pwa",source_commit:sha,facts:["PWA_AUTH_ENABLED controls PWA sign in."]})})};
+  let aiCalls=0;
+  env.AI={run:async()=>{
+    aiCalls++;
+    return {response:JSON.stringify({action:"answer",answer:"Вход зависит от PWA_AUTH_ENABLED."})};
+  }};
+  const telegramCalls=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    telegramCalls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:2000+telegramCalls.length}});
+  };
+  try{
+    const unsafe={update_id:9980,message:{chat:{id:9980,type:"private"},from:{id:9980,language_code:"ru"},message_id:80,text:"PWA авторизация сейчас активна?"}};
+    assert.equal((await call(env,unsafe)).status,200);
+    assert.equal(aiCalls,1);
+    assert.equal(tickets.size,1);
+    assert.ok(!telegramCalls.some(x=>x.method==="sendMessage"&&String(x.data.text).includes("PWA_AUTH_ENABLED")));
+    const payment={update_id:9981,message:{chat:{id:9981,type:"private"},from:{id:9981,language_code:"uz"},message_id:81,text:"Менинг тўлов чеким тасдиқланганми?"}};
+    assert.equal((await call(env,payment)).status,200);
+    assert.equal(aiCalls,1,"personal payment status must not reach AI");
+    assert.equal(tickets.size,2);
+  }finally{globalThis.fetch=original;}
+});
