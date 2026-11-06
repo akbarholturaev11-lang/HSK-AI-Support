@@ -1,6 +1,7 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer } from "./ai.js";
+import { detectReplyLanguage, conversationalFallback } from "./language.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 const fail = (status) => new Response("unavailable", { status });
@@ -208,6 +209,15 @@ async function handlePrivate(env, message) {
   if (!user || user.is_bot || message.chat?.id !== user.id) return;
   const start = parseStartCommand(message.text || "");
   const ctx = await userContext(env, user, start);
+  // No language picker: infer from each message and persist for short follow-ups.
+  // Deep-link locale is only the fallback for an ambiguous message.
+  if (start === null) {
+    const detected = detectReplyLanguage(ctx.lang, message.text || message.caption || "");
+    if (detected !== ctx.lang) {
+      await updateUser(env, user.id, detected, ctx.source, Math.floor(Date.now()/1000));
+      ctx.lang = detected;
+    }
+  }
   const copy = COPY[ctx.lang] || COPY.ru;
   if (start !== null) {
     await returnToBotMenu(env, user);
@@ -275,8 +285,15 @@ async function handlePrivate(env, message) {
     await sendUser(env, user.id, answer);
     return;
   }
-  // Missing R2 knowledge, AI budget or model uncertainty is not user consent
-  // to open an operator ticket. Ask for clarification or explicit /operator.
+  // Greetings and language requests never need R2 or an operator. They also
+  // remain useful when AI is unavailable or its daily budget has been reached.
+  const conversational = conversationalFallback(text, ctx.lang);
+  if (conversational) {
+    await sendUser(env, user.id, conversational);
+    return;
+  }
+  // Missing R2 knowledge, AI budget or model uncertainty is not consent
+  // to open an operator ticket.
   await sendUser(env, user.id, copy.clarification);
 }
 
