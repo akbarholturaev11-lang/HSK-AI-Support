@@ -78,6 +78,9 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 ## 5. AI fallback, нарх ва хавфсизлик
 
+**Захира модель фойдаланувчи танлови билан аниқланди (Q5):** MiniMax M3.1 Flash. Cloudflare Unified API model ID: `minimax/m3.1-flash`; MiniMax direct API ID: `MiniMax-M3.1-Flash`. Cloudflare расмий каталогида 2026-11-06 кўрсатилган нарх: input $0.15/M, output $0.60/M, cached input $0.015/M. Модель always-on reasoning қилади, шу сабаб паст effort, 220 белгили жавоб, timeout ва тил сифати текширилмагунча production'га уланмайди. API калити ва billing ҳали йўқ. Манба: https://developers.cloudflare.com/ai/models/minimax/m3.1-flash/
+
+
 - Primary: Cloudflare Workers AI free quota. Secondary: битта танланган ташқи provider.
 - Fallback: quota/429, 5xx, timeout, provider unavailable каби техник сабабларда. Далилсиз саволга жавоб йўқлигида бошқа модель фантазия қилишга чақирилмайди.
 - Бир мурожаат учун максимум 1 primary + 1 backup AI чақируви; ишламаса operator ticket.
@@ -117,7 +120,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 |---|---|---|
 | Q4 (ЕЧИЛГАН) | Биринчи KB қамрови | 7 та бўлим R2’да яратилди: payments, subscriptions, accounts, android, pwa, telegram, general. |
 | Q17 (ЕЧИЛГАН) | R2'дан файл танлаш | **A — Worker'да keyword→topic map, максимум 1–2 English файл.** Фойдаланувчи аниқ танлади. |
-| Q5 (МУҲОКАМАДА) | Захира AI модели | **A (тавсия):** Google Gemini 2.5 Flash-Lite (`google/gemini-2.5-flash-lite`); **B:** OpenAI GPT-4.1 mini (`openai/gpt-4.1-mini`). Gateway каталогида мавжуд; тил сифати реал тестдан кейин баҳоланади. Ҳеч қандай тўлов фаоллаштирилмади. |
+| Q5 (ЕЧИЛГАН) | Захира AI модели | **MiniMax M3.1 Flash** танланди. Cloudflare Gateway model ID `minimax/m3.1-flash`; direct MiniMax API model ID `MiniMax-M3.1-Flash`. Нархи (2026-11-06): $0.15/1M input, $0.60/1M output. Reasoning доимий: паст effort/timeout ва RU/TJ/UZ тестлари керак. Пуллик API ҳали уланмаган. |
 | Q6 | Захира тўлови Gateway Unified Billing’ми ёки BYOK API калитими? | BYOK, агар provider hard spending limit бор бўлса; қулайликни ҳам солиштириш. |
 | Q7 | Захира учун кунлик ва ойлик максимал бюджет қанча? | Бошланғич таклиф $0.20/кун ва $3/ой. |
 | Q8 | AI сўров лимити: ҳозир 3/user ва 60/global — янги меъёр қанча? | 5/user/кун, глобал Neuron ва бюджет билан назорат. |
@@ -130,7 +133,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 | Q15 | Янги AI провайдер учун мослик чегараси қандай? | Gateway/compatible API — config only; native incompatible API — adapter. |
 | Q16 | RU/TJ/UZ сифати ва тўлов FAQ жавобларини ким қабул қилади? | Owner 10 та real савол × 3 тил билан тасдиқлайди. |
 
-**ЕЧИЛГАН:** Q1–Q4, Q17 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q5 — захира AI модели, кейин Q6–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
+**ЕЧИЛГАН:** Q1–Q5, Q17 — фақат HSK-AI-Bot/main diff, ҳар 4 соатлик ChatGPT Scheduled Agent, owner approval йўқ. **Кейин муҳокама қилинади:** Q6 — MiniMax API тўлов ва credentials усули, кейин Q7–Q16. Шу пайтгача AI Gateway billing ва KB retrieval production'га қўшилмайди; R2 bucket ва KB binding аллақачон яратилди. Қолганларига тавсияни қабул қилиш ёки ўзгартириш мумкин. Тасдиқдан олдин ишга туширилмайди.
 
 ## 9. Ҳозир бажарилмайдиган ишлар
 
