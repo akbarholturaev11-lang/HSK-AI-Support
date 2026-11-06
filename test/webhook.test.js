@@ -520,7 +520,7 @@ test("V2 paid MiniMax cannot run without separate approval and a verified Gatewa
 test("V2 blocks internal PWA config and personal payment status",async()=>{
   const {env,tickets}=stub();
   const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
-  env.KB={get:async()=>({json:async()=>({topic:"pwa",source_commit:sha,facts:["PWA_AUTH_ENABLED controls PWA sign in."]})})};
+  env.KB={get:async key=>({json:async()=>({topic:key.slice(10,-5),source_commit:sha,facts:["PWA_AUTH_ENABLED controls PWA sign in."]})})};
   let aiCalls=0;
   env.AI={run:async()=>{
     aiCalls++;
