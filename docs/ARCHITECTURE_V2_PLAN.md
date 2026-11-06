@@ -4,6 +4,8 @@
 **Ҳолат:** АРХИТЕКТУРА ҚАРОРЛАРИ ТАСДИҚЛАНГАН — V2 код реализацияси ва тўлиқ end-to-end тестлар ҳали бажарилмаган. ChatGPT Scheduled Agent жадвалга қўйилган; Cloudflare R2 private bucket ва Worker `KB` binding тайёр; биринчи 7 бўлимли English knowledge sync бажарилган. MiniMax захира модели, Unified Billing ва бюджет режада тасдиқланган, аммо тўлов ва live fallback ёқилмаган.
 **Қамров:** фақат HSK AI Support Bot. Асосий HSK AI Railway/PostgreSQL серверига сўров юборилмайди.
 
+**Реализация ҳолати (2026-11-06):** `feat/support-v2-r2-vision-fallback` branch'ида [Draft PR #2](https://github.com/akbarholturaev11-lang/HSK-AI-Support/pull/2) очилди. Унда R2 topic lookup, AI жавобини grounding, 20/user daily quota, 5 хабар/1 соат context, расм/скриншот vision йўналтириш, техник MiniMax fallback (default OFF), D1 migration ва тестлар ёзилди. GitHub CI ўтган, лекин реал cloud multimodal inference, Unified Billing hard cap ва агентнинг мустақил scheduled sync тестлари **ҳали тасдиқланмаган**. `main`/production Workerга V2 коди тарқатилмаган; тўлов ҳам ёқилмаган. Бу статус коднинг ёзилганини билдиради, функция live эканини эмас.
+
 ## 1. Тасдиқланган қарорлар
 
 1. Бот Telegram’даги мавжуд FAQ, 24/7 мурожаат қабул қилиш, typing, Reply оператор жавоблари, ticket ва /close механизмларини сақлайди.
@@ -125,7 +127,7 @@
 
 **Phase 1 — universal AI router:** Gateway route, модели алмаштириш, paid backup, privacy/budget, error/fallback simulation; Cloudflare free квотаси воқеий текширилади. Фақат синовдан сўнг release.
 
-**Phase 2 — R2 → AI integration ва image vision:** R2 private bucket, 7 English topic JSON ва Worker `KB` binding тайёр. Worker’га 1–2 мос файлни танлаб ўқиш, AI'га grounded context бериш ва ишончсиз ҳолатда operator’га ўтиш кодини алоҳида қўшиш керак. Ҳозир бунда implementation йўқ. GitHub Actions pipeline талаб қилинмайди.
+**Phase 2 — R2 → AI integration ва image vision:** R2 private bucket, 7 English topic JSON ва Worker `KB` binding тайёр. Worker’га 1–2 мос файлни танлаб ўқиш, AI'га grounded context бериш ва ишончсиз ҳолатда operator’га ўтиш кодини алоҳида қўшиш керак. `main`/production Worker'да implementation ҳали йўқ; `feat/support-v2-r2-vision-fallback` branch'да дастлабки код ва test'лар мавжуд. GitHub Actions синхронизация pipeline талаб қилинмайди (CI test-only).
 
 **Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда Cloudflare R2 API орқали ёзади. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ. Агент schedule'и фаол; дастлабки KB синхронизацияси жорий чатда бажарилди, кейинги мустақил режали цикл ҳали текширилмаган.
 
