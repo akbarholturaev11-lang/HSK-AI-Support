@@ -8,15 +8,23 @@ function stub() {
   const DB = { prepare(sql) { return {
     async first() {
       if (sql.startsWith("SELECT value FROM service_settings")) {
-        const value = settings.get("telegram_webhook_sha256");
-        return value ? { value } : null;
+        const key = sql.match(/key='([^']+)'/)?.[1];
+        const entry = settings.get(key);
+        return entry ? { value: entry.value } : null;
       }
       return null;
     },
     bind(...args) { return {
     async run() {
       if (sql.startsWith("INSERT INTO service_settings")) {
-        settings.set("telegram_webhook_sha256", args[0]);
+        const key = sql.match(/VALUES\('([^']+)'/)?.[1];
+        if (key === "webhook_last_attempt") {
+          const previous = settings.get(key);
+          if (previous && previous.updated_at > args[1]) return { meta: { changes:0 } };
+          settings.set(key,{value:"1",updated_at:args[0]});
+          return { meta:{ changes:1 } };
+        }
+        settings.set(key,{value:args[0],updated_at:args[1]});
         return { meta:{ changes:1 } };
       }
       if (sql.startsWith("INSERT OR IGNORE INTO processed_updates")) {
@@ -52,8 +60,9 @@ function stub() {
     },
     async first() {
       if (sql.startsWith("SELECT value FROM service_settings")) {
-        const value = settings.get("telegram_webhook_sha256");
-        return value ? { value } : null;
+        const key = sql.match(/key='([^']+)'/)?.[1];
+        const entry = settings.get(key);
+        return entry ? { value: entry.value } : null;
       }
       if (sql.startsWith("SELECT lang,source FROM support_users")) return users.get(args[0]) || null;
       if (sql.startsWith("SELECT id,tg_id,lang,source FROM tickets"))
@@ -216,20 +225,22 @@ test("Cron registers webhook once using secret without exposing it", async () =>
     const method = String(url).split("/").pop();
     const data = JSON.parse(init.body);
     called.push({ method, data });
-    return Response.json({ ok:true, result:true });
+    return Response.json({ ok:true, result:method==="getMe"?{username:"hskai_support_bot"}:true });
   };
   try {
     await worker.scheduled({cron:"*/5 * * * *"}, env);
-    assert.equal(called.length, 1);
-    assert.equal(called[0].method, "setWebhook");
-    assert.equal(called[0].data.secret_token, "secret");
-    assert.equal(called[0].data.url, env.PUBLIC_WORKER_ORIGIN + "/webhook");
-    assert.equal(settings.size, 1);
+    assert.equal(called.length, 2);
+    assert.equal(called[0].method, "getMe");
+    assert.equal(called[1].method, "setWebhook");
+    assert.equal(called[1].data.secret_token, "secret");
+    assert.equal(called[1].data.url, env.PUBLIC_WORKER_ORIGIN + "/webhook");
+    assert.equal(settings.get("webhook_status").value, "registered");
     await worker.scheduled({cron:"*/5 * * * *"}, env);
-    assert.equal(called.length, 1, "repeated cron must not call Telegram again");
+    assert.equal(called.length, 2, "repeated cron must not call Telegram again");
     env.WEBHOOK_SECRET = "secret-rotated";
+    settings.delete("webhook_last_attempt");
     await worker.scheduled({cron:"*/5 * * * *"}, env);
-    assert.equal(called.length, 2, "rotating secret should register webhook again");
+    assert.equal(called.length, 4, "rotating secret should register webhook again");
   } finally { globalThis.fetch = original; }
 });
 
@@ -260,5 +271,29 @@ test("group administrator can discover own support group ID without external bot
     assert.equal(calls[1].method, "sendMessage");
     assert.match(calls[1].data.text, /-100234/);
   } finally { globalThis.fetch = original; }
+});
+
+
+test("one-tap activate is idempotent and never returns token", async () => {
+  const { env } = stub();
+  env.PUBLIC_WORKER_ORIGIN = "https://hsk-ai-support.hskaiiapp.workers.dev";
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => Response.json({
+    ok:true,
+    result: String(url).endsWith("/getMe") ? { username:"hskai_support_bot" } : true
+  });
+  try {
+    const req = new Request("https://support.example/activate");
+    const result = await worker.fetch(req,env);
+    assert.equal(result.status,200);
+    const data = await result.json();
+    assert.equal(data.status,"registered");
+    assert.equal(data.credentials_visible,false);
+    assert.ok(!JSON.stringify(data).includes("fake_token"));
+    const repeat = await worker.fetch(req,env);
+    assert.equal((await repeat.json()).status,"registered");
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
