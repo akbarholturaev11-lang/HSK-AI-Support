@@ -76,6 +76,22 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Келишув қоидаси:** Муҳокама пайтида сен саволга жавоб бермасдан кейингисига ўтсанг, тавсия қилинган вариант **режада қабул қилинган default** деб қайд этилади. Фикрингни кейин ўзгартиришинг мумкин. Бу қоида **пуллик API billing, махфий калит, production deploy ёки бошқа таъсирли ҳаракатга ўз-ўзидан рухсат** ҳисобланмайди.
 
+## 4.1. Фото/скриншот ва AI Vision — мажбурий V2 функцияси
+
+**Ҳозирги код ҳолати:** `src/index.js`'да Telegram `message.text` бўлмаса, `handlePrivate()` `forwardToOperator()`'га ўтади. Расм ва унинг caption'и `copyMessage` орқали оператор гуруҳига боради; админ `copyMessage` билан user'га фото/матн қайтариши мумкин. **AI расмни таҳлил қилмайди.** Бу функция V2 реализациясида алоҳида қўшилади.
+
+**Қарор: фойдаланувчининг расми ва хатолик скриншотини автоматик AI Vision таҳлил қилади; ишончсиз/ишламаса операторга ўтказади.** Янги алоҳида модель ёки OCR сервиси шарт эмас: асосий `@cf/google/gemma-4-26b-a4b-it` модель vision support қилади (Cloudflare расмий model docs), захира `minimax/m3.1-flash` ҳам image input қила олади (Cloudflare catalog). Иккала model'га ҳам ҳақиқий расм payload қабул қилиниши ва ишлаши staging тестда исботланиши керак; capability борлиги production интеграцияси тайёр дегани эмас.
+
+**Содда амалий оқим:**
+1. Telegram'дан `photo` (зарур бўлса JPG/PNG image `document`) ва `caption`ни қабул қилиш; `getFile` орқали тасдиқланган Telegram файлини HTTPS билан юклаш. MIME, ҳажм ва timeout чегарасини текшириш; нотўғри/катта файлни операторга узатиш.
+2. Расм + caption/қисқа аввалги контекстни AI'га узатиб, HSK AI'даги экранни/хатони/оғзаки матнни тушуниш; керакли мавзуга мос 1–2 R2 KB JSON фактлари билан текшириш. Фақат расмда кўринаётган нарса асосида 1–2 қисқа жумла ва керак бўлса битта аниқловчи савол; бошқа user маълумотини тахмин қилмаслик.
+3. Ишончсиз, экран ноаниқ, model error, quota/бюджет тугаган, ёки user оператор сўраган бўлса — мавжуд `forwardToOperator()` ва `copyMessage()` орқали **расмнинг ўзини** операторга етказиш. Бир user учун бир неча тикет очмаслик.
+4. **Қоида:** битта image AI таҳлили ҳам кунлик 20 AI саволи лимитига киради; расм учун алоҳида пуллик модель автоматик ёқилмайди. Аниқ FAQ ва операторга юбориш quota'га кирмайди. Cloudflare/MiniMax умумий бюджет назорати сақланади.
+5. **Махфийлик:** расм, Telegram `file_id`, raw OCR матни ёки screenshot data'ни R2 билимлар базасига ёзмаслик; логларда расмнинг мазмуни, токен, карта, email, шахсий маълумот бўлмасин. Модельга узатишда сезгир маълумот хавфини камайтириш; тўлов чекидан «тўлов тасдиқланган» деган хулосани AI мустақил чиқармасин — аккаунт ва тўлов статуси фақат ишончли манбадан ёки оператор текшируви билан.
+6. **Тест:** Telegram фото caption билан/сиз, screenshot error, UI language, оғир ва бузуқ файл, quota, MiniMax backup image support, user->operator `copyMessage`, admin photo reply, RU/TJ/UZ, sensitive-data leak; AI ишламаганда ҳозирги photo-to-operator йўли бузилмаслиги шарт.
+
+Расмий model маълумотлари: https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/ ва https://developers.cloudflare.com/ai/models/minimax/m3.1-flash/ .
+
 ## 5. AI fallback, нарх ва хавфсизлик
 
 **Қабул қилинган охирги fallback (Q11):** фойдаланувчи **A — AI иккала провайдерда ҳам ишламаса автоматик Telegram операторга ticket + қисқа статус** вариантини танлади. Очиқ тикет бўлса янгисини кўпайтирмасдан унга бириктириш керак. Production V2 кодда ҳали жорий қилинмаган.
@@ -108,7 +124,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 
 **Phase 1 — universal AI router:** Gateway route, модели алмаштириш, paid backup, privacy/budget, error/fallback simulation; Cloudflare free квотаси воқеий текширилади. Фақат синовдан сўнг release.
 
-**Phase 2 — R2 → AI integration:** R2 private bucket, 7 English topic JSON ва Worker `KB` binding тайёр. Worker’га 1–2 мос файлни танлаб ўқиш, AI'га grounded context бериш ва ишончсиз ҳолатда operator’га ўтиш кодини алоҳида қўшиш керак. Ҳозир бунда implementation йўқ. GitHub Actions pipeline талаб қилинмайди.
+**Phase 2 — R2 → AI integration ва image vision:** R2 private bucket, 7 English topic JSON ва Worker `KB` binding тайёр. Worker’га 1–2 мос файлни танлаб ўқиш, AI'га grounded context бериш ва ишончсиз ҳолатда operator’га ўтиш кодини алоҳида қўшиш керак. Ҳозир бунда implementation йўқ. GitHub Actions pipeline талаб қилинмайди.
 
 **Phase 3 — ChatGPT Scheduled Agent:** ҳар 4 соатда HSK-AI-Bot/main SHA ва diff текшируви → фақат текширилган user-visible ўзгаришни тегишли English файлда Cloudflare R2 API орқали ёзади. Ўзгариш йўқ бўлса ҳеч нарса қилмайди; owner approval йўқ. Агент schedule'и фаол; дастлабки KB синхронизацияси жорий чатда бажарилди, кейинги мустақил режали цикл ҳали текширилмаган.
 
@@ -126,6 +142,7 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 - FAQ AI/R2сиз; KB сўрови максимум 1–3 R2 ҳужжат.
 - KB бир тилда, текширилган main кодга таянган ва source_commit'ли. Таржима дубликатлари йўқ; файл фақат факт ўзгарганда қайта ёзилади.
 - Free AI quota exhaustion ҳолатида захира ишлайди; у ҳам ишламаса Telegram операторга ticket келади.
+- Фото/скриншот AI Vision билан текширилади, R2 KB'га асосланиб қисқа жавоб берилади; image vision ишламаса асл сурат operator'га юборилади. Расм KB/R2'га сақланмайди, payment approval AI'дан қилинмайди.
 - Ботнинг мавжуд Reply, /close, фото, deep-link, typing ва webhook имкониятлари бузилмайди.
 - Лимит, харажат, AI хатолари ва rollback амалда текширилган.
 
