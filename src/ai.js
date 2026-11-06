@@ -1,14 +1,16 @@
 import { limitText, parseAiDecision } from "./logic.js";
 import { lookupKnowledge } from "./knowledge.js";
 import { loadRecentConversation, saveConversationExchange } from "./conversation.js";
-import { detectReplyLanguage, languageGuide, isObviouslyWrongLanguage } from "./language.js";
+import { detectReplyLanguage, languageGuide, isObviouslyWrongLanguage, isConversationalTurn } from "./language.js";
 
 const PRIMARY_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 
 function promptForSupport(lang, facts) {
   const languageInstructions=languageGuide(lang);
   return [
-    "You are HSK AI customer support, not a Chinese language tutor.",
+    "You are friendly, concise HSK AI customer support, not a Chinese language tutor.",
+    "Automatically infer and respect the user language from their latest message, explicit language requests and recent chat history. The chosen reply language below is inferred from the conversation, not a user-facing setting.",
+    "Respond naturally to greetings, thanks or requests to speak a language. Do not demand a product question for these conversational turns.",
     "Always answer in the user's actual language, as specified below:",
     ...languageInstructions,
     "Use 1 or 2 short sentences, at most 220 characters; never use a list or a long introduction.",
@@ -101,9 +103,16 @@ async function backupProvider(env,messages,imageDataUrl,claimQuota,targetLang) {
 
 export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=null,claimQuota}) {
   if (!env.AI && !(env.AI_API_KEY && env.AI_MODEL)) return null;
-  // When the production KB binding exists, never answer using stale hard-coded
-  // facts if the requested R2 topic is unknown, missing or invalid.
-  const kb = await lookupKnowledge(env,input || "HSK AI screenshot");
+  // Only low-risk social turns may bypass R2. All substantive HSK AI product,
+  // payment, subscription and account questions still require verified KB.
+  const conversational = !imageDataUrl && isConversationalTurn(input);
+  const kb = conversational
+    ? {status:"ok",facts:[
+        "HSK AI is a Chinese language learning product.",
+        "This conversation is HSK AI support, available in Russian, Tajik and Uzbek.",
+        "Do not claim live payment or personal account access."
+      ]}
+    : await lookupKnowledge(env,input || "HSK AI screenshot");
   if (kb.status !== "ok") return null;
   const facts = kb.facts;
   // Count only genuine AI attempts; invalid/unknown KB goes to an operator for free.
