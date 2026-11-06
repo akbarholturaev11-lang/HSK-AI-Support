@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {chooseOfficialLink, appendOfficialLink, contextualKnowledgeQuery, platformLoginFollowup,
-  isApprovedLinkResponse, recentAccountTopic, OFFICIAL_LINKS} from "../src/links.js";
+  isApprovedLinkResponse, recentAccountTopic, OFFICIAL_LINKS, directLinkOrGuideReply} from "../src/links.js";
 
 const accountHistory=[
   {role:"user",content:"Аккаунт ва кириш / Account login"},
@@ -44,4 +44,20 @@ test("never deliver AI-invented checkout, phishing or malformed links",()=>{
   assert.equal(isApprovedLinkResponse("Перейдите на https://fake-hskai.app/pay"),false);
   assert.equal(isApprovedLinkResponse("https://hskai.app.evil.org/download"),false);
   assert.equal(appendOfficialLink("Платите на https://fake-hskai.app",{input:"Где оплатить?"}),null);
+});
+
+
+test("natural links for screenshot requests: guide, resend, iPhone, with no invented PWA deep link",()=>{
+  const history=[
+    {role:"user",content:"Айфон иловасини ўрнатишим керак"},
+    {role:"assistant",content:"Сиз iPhone'да веб-илова орқали киришингиз мумкин."}
+  ];
+  assert.match(directLinkOrGuideReply("йўриқномасини юбора оласизми?","uz",history),/hskai\.app\/uz\/guide\/faq/);
+  assert.match(directLinkOrGuideReply("айфон иловасининг силкасини ташлаб беринг","uz",history),/https:\/\/hskai\.app$/);
+  assert.match(directLinkOrGuideReply("силкани бошдан ташлаб бер нг","uz",history),/https:\/\/hskai\.app$/);
+  assert.equal(directLinkOrGuideReply("Скриншотни юбордим. Android'да аккаунтим очилмаяпти.","uz",[]),null);
+  assert.equal(directLinkOrGuideReply("Android'да Google кириш ишламайди","uz",[]),null);
+  assert.match(directLinkOrGuideReply("Можешь скинуть ссылку на Android?","ru",[]),/https:\/\/hskai\.app\/download/);
+  assert.match(directLinkOrGuideReply("iPhone приложения ссылку","ru",[]),/https:\/\/hskai\.app$/);
+  assert.match(directLinkOrGuideReply("силкани бошдан ташлаб бер","uz",[]),/Қайси ҳавола керак/);
 });
