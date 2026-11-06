@@ -794,3 +794,54 @@ test("AI outage keeps Uzbek greeting natural without a product-KB fallback loop"
     assert.equal(tickets.size,0);
   }finally{globalThis.fetch=original;}
 });
+
+
+test("account menu then Android preserves sign-in context and offers localized official FAQ",async()=>{
+  const {env,conversations,quotas}=stub();
+  let modelCalls=0;
+  env.AI={run:async()=>{modelCalls++;return {response:'{"action":"answer","answer":"Скачайте приложение."}'}}};
+  const previous=globalThis.fetch;
+  const calls=[];let id=4501;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),payload:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:id++}});
+  };
+  const user={id:4500,language_code:"ru",username:"faq_user"};
+  try {
+    const begin={update_id:4500,message:{chat:{id:4500,type:"private"},from:user,message_id:1,text:"/start"}};
+    assert.equal((await call(env,begin)).status,200);
+    const pick={update_id:4501,callback_query:{id:"q4501",from:user,message:{message_id:4501,chat:{id:4500,type:"private"}},data:"help:account"}};
+    assert.equal((await call(env,pick)).status,200);
+    assert.equal(conversations.length,2);
+    const follow={update_id:4502,message:{chat:{id:4500,type:"private"},from:user,message_id:2,text:"андроид"}};
+    assert.equal((await call(env,follow)).status,200);
+    assert.equal(modelCalls,0,"platform clarification must not waste AI call");
+    const last=calls.filter(x=>x.method==="sendMessage").at(-1).payload;
+    assert.match(last.text,/Проблема со входом/);
+    assert.match(last.text,/https:\/\/hskai\.app\/ru\/guide\/faq\//);
+    assert.doesNotMatch(last.text,/скача|загруз/ui);
+    assert.equal(last.reply_markup,undefined);
+    assert.equal(quotas.has("ai-user:4500:"+new Date().toISOString().slice(0,10)),false);
+  } finally {globalThis.fetch=previous;}
+});
+
+test("Android download and Instagram questions return only verified clickable links",async()=>{
+  const {env}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"Ссылку можно открыть на официальном сайте."})})};
+  const previous=globalThis.fetch;const calls=[];let id=4600;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),payload:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:id++}});
+  };
+  const from={id:4600,language_code:"ru"};
+  const send=(update_id,text)=>call(env,{update_id,message:{chat:{id:4600,type:"private"},from,message_id:update_id,text}});
+  try{
+    assert.equal((await send(4601,"Где скачать Android приложение?")).status,200);
+    assert.equal((await send(4602,"Инстаграм HSK AI")).status,200);
+    const msgs=calls.filter(x=>x.method==="sendMessage").map(x=>x.payload.text);
+    assert.equal(msgs.length,2);
+    assert.match(msgs[0],/https:\/\/hskai\.app\/download/);
+    assert.match(msgs[1],/https:\/\/www\.instagram\.com\/hskai\.app/);
+    assert.ok(!msgs.some(x=>x.includes("fake-hskai")));
+  }finally{globalThis.fetch=previous;}
+});
