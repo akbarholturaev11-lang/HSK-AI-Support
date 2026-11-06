@@ -1,6 +1,6 @@
 import { limitText, parseAiDecision } from "./logic.js";
 import { lookupKnowledge } from "./knowledge.js";
-import { contextualKnowledgeQuery, appendOfficialLink, isApprovedLinkResponse } from "./links.js";
+import { contextualKnowledgeQuery, appendOfficialLink, isApprovedLinkResponse, platformLoginFollowup } from "./links.js";
 import { loadRecentConversation, saveConversationExchange } from "./conversation.js";
 import { detectReplyLanguage, languageGuide, isObviouslyWrongLanguage, isConversationalTurn } from "./language.js";
 
@@ -105,10 +105,17 @@ async function backupProvider(env,messages,imageDataUrl,claimQuota,targetLang) {
 }
 
 export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=null,claimQuota}) {
+  const history = await loadRecentConversation(env,userId);
+  // After account/login FAQ, a one-word platform reply must continue the
+  // same problem, not generate a generic install answer or consume AI quota.
+  const direct=!imageDataUrl && platformLoginFollowup(input,detectReplyLanguage(lang,input),history);
+  if (direct) {
+    await saveConversationExchange(env,userId,input,direct);
+    return direct;
+  }
   if (!env.AI && !(env.AI_API_KEY && env.AI_MODEL)) return null;
   // Only low-risk social turns may bypass R2. All substantive HSK AI product,
   // payment, subscription and account questions still require verified KB.
-  const history = await loadRecentConversation(env,userId);
   const contextualQuery=contextualKnowledgeQuery(input,history);
   const conversational = !imageDataUrl && isConversationalTurn(input);
   const kb = conversational
