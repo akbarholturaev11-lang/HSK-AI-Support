@@ -420,11 +420,16 @@ test("V2 technical primary failure attempts configured MiniMax and then answers"
   const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
   env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["Chinese lessons are available."]})})};
   env.BACKUP_ENABLED="true";
+  env.BACKUP_BILLING_APPROVED="true"; // simulated approval in mock only
+  env.BACKUP_SPEND_CAP_VERIFIED="true"; // mocked: live spend cap not enabled
+  env.AI_GATEWAY_ID="hsk-ai-support";
+  env.AI_GATEWAY_BACKUP_ROUTE="support-backup";
   let calls=0;
-  env.AI={run:async(model)=>{
+  env.AI={run:async(model,request,options)=>{
     calls++;
     if(model.startsWith("@cf/")) throw new Error("exhausted");
-    assert.equal(model,"minimax/m3.1-flash");
+    assert.equal(model,"dynamic/support-backup");
+    assert.equal(options.gateway.id,"hsk-ai-support");
     return {choices:[{message:{content:JSON.stringify({action:"answer",answer:"Откройте раздел курса."})}}]};
   }};
   const tg=[];
@@ -484,5 +489,26 @@ test("V2 refuses clearly Uzbek text when Tajik reply was required",async()=>{
     assert.equal((await call(env,update)).status,200);
     assert.equal(tickets.size,1,"incorrect-language answer must defer to operator");
     assert.ok(!calls.some(c=>c.method==="sendMessage" && /хитой тилини ўрганиш/.test(c.data.text)));
+  }finally{globalThis.fetch=original;}
+});
+
+
+test("V2 paid MiniMax cannot run without separate approval and a verified Gateway route",async()=>{
+  const {env,tickets}=stub();
+  const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+  env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["Chinese lessons are available."]})})};
+  env.BACKUP_ENABLED="true";
+  let attempts=[];
+  env.AI={run:async(model)=>{
+    attempts.push(model);
+    throw new Error("primary quota exceeded");
+  }};
+  const original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>Response.json({ok:true,result:{message_id:1800}});
+  try{
+    const update={update_id:9920,message:{chat:{id:9920,type:"private"},from:{id:9920,language_code:"ru"},message_id:20,text:"Что такое HSK AI?"}};
+    assert.equal((await call(env,update)).status,200);
+    assert.deepEqual(attempts,["@cf/google/gemma-4-26b-a4b-it"],"never call paid provider without explicit billing approval");
+    assert.equal(tickets.size,1);
   }finally{globalThis.fetch=original;}
 });
