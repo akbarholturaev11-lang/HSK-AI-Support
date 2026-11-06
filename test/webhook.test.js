@@ -503,7 +503,7 @@ test("V2 refuses clearly Uzbek text when Tajik reply was required",async()=>{
   const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
   env.KB={get:async()=>({json:async()=>({topic:"general",source_commit:sha,facts:["HSK AI helps learn Chinese."]})})};
   env.AI={run:async(model,payload)=>{
-    assert.match(payload.messages[0].content,/MANDATORY REPLY LANGUAGE: Tajik/);
+    assert.match(payload.messages[0].content,/Reply naturally and briefly in Tajik/);
     return {response:JSON.stringify({action:"answer",answer:"HSK AI — бу хитой тилини ўрганиш иловаси."})};
   }};
   const calls=[];
@@ -761,7 +761,7 @@ test("Uzbek language request works without a picker, R2 facts or auto-operator",
     assert.equal(users.get(901).lang,"ru");
     assert.equal((await send(9101,"салом ўзбек тилида суҳбатлаша оламизми?")).status,200);
     assert.equal(users.get(901).lang,"uz");
-    assert.match(aiPrompts[0],/MANDATORY REPLY LANGUAGE: Uzbek/);
+    assert.match(aiPrompts[0],/Reply naturally and briefly in Uzbek/);
     assert.equal(kbReads,0,"a language request should not require R2");
     assert.match(messages.at(-1).text,/Ўзбек тилида/);
     assert.equal((await send(9102,"ээээ")).status,200);
