@@ -9,7 +9,7 @@ test("keyword routing covers Uzbek, Tajik and Russian support scenarios", () => 
   assert.deepEqual(selectKnowledgeTopics("Не получается войти в аккаунт"), ["accounts"]);
   assert.deepEqual(selectKnowledgeTopics("Ошибка в Play Market на Android"), ["android"]);
   assert.deepEqual(selectKnowledgeTopics("iPhone PWA не открывается"), ["pwa"]);
-  assert.deepEqual(selectKnowledgeTopics("Как открыть Telegram Mini App?"), ["telegram"]);
+  assert.deepEqual(selectKnowledgeTopics("Как открыть Telegram Mini App?"), ["telegram"]);\n  assert.deepEqual(selectKnowledgeTopics("Telegram янгиликлар канали"), ["telegram"]);
   assert.deepEqual(selectKnowledgeTopics("Что такое HSK AI?"), ["general"]);
   assert.deepEqual(selectKnowledgeTopics("Аккаунт и оплата"), ["payments", "accounts"]);
   assert.deepEqual(selectKnowledgeTopics("??"), []);
