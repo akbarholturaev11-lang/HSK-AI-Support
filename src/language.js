@@ -25,7 +25,7 @@ export function languageGuide(lang) {
     "Avoid Tajik words: барои, забони, метавонед, барномаест, аст."
   ];
   return [
-    "MANDATORY REPLY LANGUAGE: Russian (Русский), Cyrillic. Do not answer in Tajik or Uzbek.",
+    "MANDATORY REPLY LANGUAGE: Russian in Cyrillic script (Русский). Do not answer in Tajik or Uzbek.",
     "Correct Russian wording example (style only): «Проверьте этот раздел приложения.»"
   ];
 }
