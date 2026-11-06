@@ -181,3 +181,13 @@ Telegram → Cloudflare Worker → FAQ/intent → D1 index → R2 дан мос 
 - R2 pricing: https://developers.cloudflare.com/r2/pricing/
 - R2 Workers binding: https://developers.cloudflare.com/r2/get-started/workers-api/
 - D1: https://developers.cloudflare.com/d1/
+
+## 11. V2 implementation progress (2026-11-06)
+
+- **Feature code written in PR #1, NOT deployed to production:** https://github.com/akbarholturaev11-lang/HSK-AI-Support/pull/1 .
+- Added `src/knowledge.js` (R2 English topic lookup, maximum 2 documents), `src/ai-router.js` (Cloudflare Gemma 4 primary and gated MiniMax M3.1 Flash backup), `src/conversation.js` (5 sanitized messages, 1-hour TTL), updated `src/index.js` and additive D1 `support_context` schema.
+- AI quota 20/user/day. Static FAQ and operator messages not limited by AI quota.
+- Gateway `hsk-ai-support` created: authentication enabled, provider request/response logging disabled; MiniMax model-filtered spend rules $0.20/86400s, $3/2592000s. The second is a rolling 30-day window, not necessarily a calendar month.
+- Paid backup OFF in `wrangler.toml`, no Unified Billing credits purchased. Production Worker is still running the original deployed version.
+- Four-hour KB sync agent's prompt now uses main-first (Q10/B) and previous-version R2 backup (Q13/A). **Autonomous scheduled success and actual backup-restore have not yet been observed.**
+- See [V2_RELEASE_CHECKLIST.md](V2_RELEASE_CHECKLIST.md) for required staging, D1 migration, real RU/TJ/UZ model evaluation, token-secret remediation, billing approval, and production rollout.
