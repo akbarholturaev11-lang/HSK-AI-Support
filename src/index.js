@@ -197,6 +197,13 @@ async function handlePrivate(env, message) {
     await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
     return;
   }
+  if (!env.ADMIN_CHAT_ID) {
+    const pending = ctx.lang === "ru" ? "Поддержка настраивается. Попробуйте позже." :
+      ctx.lang === "tj" ? "Хадамоти дастгирӣ ҳоло танзим мешавад. Баъдтар кӯшиш кунед." :
+      "Ёрдам хизмати ҳозир созланяпти. Кейинроқ қайта ёзинг.";
+    await sendUser(env, user.id, pending);
+    return;
+  }
   if (!await claimQuota(env, "msg-user:" + user.id, 60)) return;
   if ((message.text || "").trim() === "/operator") {
     await forwardToOperator(env, user, ctx);
@@ -280,7 +287,7 @@ async function handleAdmin(env, message) {
 
 
 async function registerWebhookOnce(env) {
-  if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.ADMIN_CHAT_ID || !env.DB) return;
+  if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.DB) return;
   const origin = String(env.PUBLIC_WORKER_ORIGIN || "").replace(/\/+$/, "");
   if (!/^https:\/\/[a-z0-9.-]+$/i.test(origin)) return;
   const url = origin + "/webhook";
@@ -310,8 +317,31 @@ async function registerWebhookOnce(env) {
   }
 }
 
+async function handleGroupChatId(env, message) {
+  if (!message?.from || message.from.is_bot) return;
+  if (!["group", "supergroup"].includes(message.chat?.type)) return;
+  if (!/^\/chatid(?:@[A-Za-z0-9_]+)?\s*$/i.test(String(message.text || ""))) return;
+  // Chat IDs are only returned when the sender is an administrator or owner.
+  const member = await telegram(env, "getChatMember", {
+    chat_id: message.chat.id,
+    user_id: message.from.id
+  });
+  if (!["administrator", "creator"].includes(member?.status)) return;
+  await telegram(env, "sendMessage", {
+    chat_id: message.chat.id,
+    reply_to_message_id: message.message_id,
+    text: "🔐 Operator group chat ID:\n" + String(message.chat.id) +
+      "\n\nStore this as ADMIN_CHAT_ID in Cloudflare Worker Secrets."
+  });
+}
+
 async function routeUpdate(env, update) {
   if (update.callback_query) return handleCallback(env, update.callback_query);
+  if (update.message?.chat?.type === "group" || update.message?.chat?.type === "supergroup") {
+    if (/^\/chatid(?:@[A-Za-z0-9_]+)?\s*$/i.test(String(update.message.text || ""))) {
+      return handleGroupChatId(env, update.message);
+    }
+  }
   if (!update.message) return;
   if (String(update.message.chat?.id) === String(env.ADMIN_CHAT_ID)) {
     return handleAdmin(env, update.message);
@@ -324,7 +354,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") return ok();
     if (request.method !== "POST" || url.pathname !== "/webhook") return fail(404);
-    if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.ADMIN_CHAT_ID || !env.DB) return fail(503);
+    if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.DB) return fail(503);
     if (!equalSecret(env.WEBHOOK_SECRET, request.headers.get("X-Telegram-Bot-Api-Secret-Token"))) return fail(403);
     let update;
     try { update = await request.json(); } catch { return fail(400); }
