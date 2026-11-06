@@ -431,12 +431,11 @@ test("V2 technical primary failure attempts configured MiniMax and then answers"
   env.BACKUP_BILLING_APPROVED="true"; // simulated approval in mock only
   env.BACKUP_SPEND_CAP_VERIFIED="true"; // mocked: live spend cap not enabled
   env.AI_GATEWAY_ID="hsk-ai-support";
-  env.AI_GATEWAY_BACKUP_ROUTE="support-backup";
   let calls=0;
   env.AI={run:async(model,request,options)=>{
     calls++;
     if(model.startsWith("@cf/")) throw new Error("exhausted");
-    assert.equal(model,"dynamic/support-backup");
+    assert.equal(model,"minimax/m3.1-flash");
     assert.equal(options.gateway.id,"hsk-ai-support");
     return {choices:[{message:{content:JSON.stringify({action:"answer",answer:"Откройте раздел курса."})}}]};
   }};
