@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 
 function stub() {
-  const calls = [], processed = new Set(), users = new Map(), tickets = new Map(), links = new Map(), quotas = new Map(), settings = new Map();
+  const calls = [], processed = new Set(), users = new Map(), tickets = new Map(), links = new Map(), quotas = new Map(), settings = new Map(), conversations = [];
   let nextTicket = 1;
-  const DB = { prepare(sql) { return {
+  const DB = { async batch(statements) { for (const stmt of statements) await stmt.run(); }, prepare(sql) { return {
     async first() {
       if (sql.startsWith("SELECT value FROM service_settings")) {
         const key = sql.match(/key='([^']+)'/)?.[1];
@@ -16,6 +16,15 @@ function stub() {
     },
     bind(...args) { return {
     async run() {
+      if (sql.startsWith("INSERT INTO ai_conversation")) {
+        conversations.push({tg_id:args[0],role:args[1],text:args[2],created_at:args[3]});
+        return {meta:{changes:1}};
+      }
+      if (sql.startsWith("DELETE FROM ai_conversation")) {
+        for (let i=conversations.length-1;i>=0;i--)
+          if (conversations[i].tg_id===args[0]) conversations.splice(i,1);
+        return {meta:{changes:1}};
+      }
       if (sql.startsWith("INSERT INTO service_settings")) {
         const key = sql.match(/VALUES\('([^']+)'/)?.[1];
         if (key === "webhook_last_attempt") {
@@ -58,6 +67,13 @@ function stub() {
       }
       return { meta: { changes: 1 } };
     },
+    async all() {
+      if (sql.startsWith("SELECT role,text FROM ai_conversation")) {
+        return {results:conversations.filter(x=>x.tg_id===args[0]&&x.created_at>=args[1])
+          .slice(-5).reverse().map(x=>({role:x.role,text:x.text}))};
+      }
+      return {results:[]};
+    },
     async first() {
       if (sql.startsWith("SELECT value FROM service_settings")) {
         const key = sql.match(/key='([^']+)'/)?.[1];
@@ -78,7 +94,7 @@ function stub() {
     env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake",
       KB: { async get(key) {const topic=key.slice(10,-5);return {async json(){return {topic,source_commit:"c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073",facts:["HSK AI is a Chinese language learning product."]}}}}}
     },
-    calls, users, tickets, links, settings, quotas
+    calls, users, tickets, links, settings, quotas, conversations
   };
 }
 
@@ -777,4 +793,55 @@ test("AI outage keeps Uzbek greeting natural without a product-KB fallback loop"
     assert.equal(kbReads,0);
     assert.equal(tickets.size,0);
   }finally{globalThis.fetch=original;}
+});
+
+
+test("account menu then Android preserves sign-in context and offers localized official FAQ",async()=>{
+  const {env,conversations,quotas}=stub();
+  let modelCalls=0;
+  env.AI={run:async()=>{modelCalls++;return {response:'{"action":"answer","answer":"Скачайте приложение."}'}}};
+  const previous=globalThis.fetch;
+  const calls=[];let id=4501;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),payload:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:id++}});
+  };
+  const user={id:4500,language_code:"ru",username:"faq_user"};
+  try {
+    const begin={update_id:4500,message:{chat:{id:4500,type:"private"},from:user,message_id:1,text:"/start"}};
+    assert.equal((await call(env,begin)).status,200);
+    const pick={update_id:4501,callback_query:{id:"q4501",from:user,message:{message_id:4501,chat:{id:4500,type:"private"}},data:"help:account"}};
+    assert.equal((await call(env,pick)).status,200);
+    assert.equal(conversations.length,2);
+    const follow={update_id:4502,message:{chat:{id:4500,type:"private"},from:user,message_id:2,text:"андроид"}};
+    assert.equal((await call(env,follow)).status,200);
+    assert.equal(modelCalls,0,"platform clarification must not waste AI call");
+    const last=calls.filter(x=>x.method==="sendMessage").at(-1).payload;
+    assert.match(last.text,/Проблема со входом/);
+    assert.match(last.text,/https:\/\/hskai\.app\/ru\/guide\/faq\//);
+    assert.doesNotMatch(last.text,/скача|загруз/ui);
+    assert.equal(last.reply_markup,undefined);
+    assert.equal(quotas.has("ai-user:4500:"+new Date().toISOString().slice(0,10)),false);
+  } finally {globalThis.fetch=previous;}
+});
+
+test("Android download and Instagram questions return only verified clickable links",async()=>{
+  const {env}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"Ссылку можно открыть на официальном сайте."})})};
+  const previous=globalThis.fetch;const calls=[];let id=4600;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),payload:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:id++}});
+  };
+  const from={id:4600,language_code:"ru"};
+  const send=(update_id,text)=>call(env,{update_id,message:{chat:{id:4600,type:"private"},from,message_id:update_id,text}});
+  try{
+    assert.equal((await send(4601,"Где скачать Android приложение?")).status,200);
+    assert.equal((await send(4602,"Инстаграм HSK AI")).status,200);
+    const msgs=calls.filter(x=>x.method==="sendMessage").map(x=>x.payload.text);
+    assert.equal(msgs.length,2);
+    assert.match(msgs[0],/https:\/\/hskai\.app\/download/);
+    assert.match(msgs[1],/https:\/\/www\.instagram\.com\/hskai\.app/);
+    assert.ok(!msgs.some(x=>x.includes("fake-hskai")));
+  }finally{globalThis.fetch=previous;}
 });
