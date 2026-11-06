@@ -128,16 +128,19 @@ test("without AI key, user escalation and operator reply both work", async () =>
     assert.equal((await call(env, user)).status, 200);
     assert.equal(tickets.size, 1);
     assert.equal(calls[0].chat_id, "-100234");
-    assert.match(calls[0].text, /Как ответить/);
-    assert.match(calls[0].text, /Ответить/);
-    assert.match(calls[0].text, /Telegram: <a href="https:\/\/t\.me\/my_support_user">@my_support_user<\/a>/);
+    assert.match(calls[0].text, /@my_support_user/);
+    assert.match(calls[0].text, /<code>ru<\/code>/);
+    assert.match(calls[0].text, /<code>\/close<\/code>/);
+    assert.match(calls[0].text, /<blockquote>У меня пропала подписка<\/blockquote>/);
+    assert.doesNotMatch(calls[0].text, /Как ответить|Source:|Telegram:|ID:|Ticket #|Name:/);
+    assert.equal(calls.length,1,"do not send an automated acknowledgement to user");
     assert.equal(links.get(400), 1);
-    assert.equal(calls[1].chat_id, 51);
     const admin = { update_id: 201, message: { chat: { id: -100234, type: "supergroup" }, from: { id: 77 }, message_id: 999, text: "Уточните дату", reply_to_message: { message_id: 400 } } };
     assert.equal((await call(env, admin)).status, 200);
-    assert.equal(calls[2].chat_id, 51);
-    assert.equal(calls[2].from_chat_id, "-100234");
-    assert.equal(calls[2].message_id, 999);
+    assert.equal(calls.length,2,"only an actual operator reply is sent to user");
+    assert.equal(calls[1].chat_id, 51);
+    assert.equal(calls[1].from_chat_id, "-100234");
+    assert.equal(calls[1].message_id, 999);
   } finally { globalThis.fetch = original; }
 });
 
@@ -353,8 +356,11 @@ test("ticket with no Telegram username retains user ID and safe fallback", async
       message_id: 11, text: "/operator"
     }};
     assert.equal((await call(env, update)).status, 200);
-    assert.match(calls[0].text, /Telegram: username not set/);
-    assert.match(calls[0].text, /ID: <code>108<\/code>/);
+    assert.match(calls[0].text, /<b>User<\/b>/);
+    assert.match(calls[0].text, /tg:\/\/user\?id=108/);
+    assert.match(calls[0].text, /<blockquote>Оператор керак<\/blockquote>/);
+    assert.doesNotMatch(calls[0].text, /ID:|Telegram:|Source:|Name:/);
+    assert.equal(calls.length,1);
   } finally { globalThis.fetch = previous; }
 });
 
@@ -425,12 +431,11 @@ test("V2 technical primary failure attempts configured MiniMax and then answers"
   env.BACKUP_BILLING_APPROVED="true"; // simulated approval in mock only
   env.BACKUP_SPEND_CAP_VERIFIED="true"; // mocked: live spend cap not enabled
   env.AI_GATEWAY_ID="hsk-ai-support";
-  env.AI_GATEWAY_BACKUP_ROUTE="support-backup";
   let calls=0;
   env.AI={run:async(model,request,options)=>{
     calls++;
     if(model.startsWith("@cf/")) throw new Error("exhausted");
-    assert.equal(model,"dynamic/support-backup");
+    assert.equal(model,"minimax/m3.1-flash");
     assert.equal(options.gateway.id,"hsk-ai-support");
     return {choices:[{message:{content:JSON.stringify({action:"answer",answer:"Откройте раздел курса."})}}]};
   }};
@@ -559,4 +564,51 @@ test("V2 missing R2 binding fails closed instead of using stale local FACTS",asy
     assert.equal(aiCalls,0);
     assert.equal(tickets.size,1);
   }finally{globalThis.fetch=orig;}
+});
+
+
+test("operator chat stays silent: one header, subsequent user messages copied, no auto replies on close", async () => {
+  const {env,tickets,links}=stub();
+  let nextId=500;
+  const calls=[];
+  const original=globalThis.fetch;
+  globalThis.fetch=async (url,init)=>{
+    calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:nextId++}});
+  };
+  try {
+    const from={id:601,language_code:"ru",first_name:"Client",username:"clientname"};
+    const userMessage=(update_id,message_id,field,value)=>({
+      update_id,message:{chat:{id:601,type:"private"},from,message_id,[field]:value}
+    });
+    assert.equal((await call(env,userMessage(600,91,"text","Приложение <не работает>"))).status,200);
+    assert.equal(calls.length,1);
+    assert.equal(calls[0].method,"sendMessage");
+    assert.equal(calls[0].data.parse_mode,"HTML");
+    assert.match(calls[0].data.text,/<blockquote>Приложение &lt;не работает&gt;<\/blockquote>/);
+    assert.equal(links.get(500),1);
+    assert.equal((await call(env,userMessage(601,92,"text","Вот новая ошибка"))).status,200);
+    assert.equal(calls.length,2);
+    assert.equal(calls[1].method,"copyMessage");
+    assert.equal(calls[1].data.chat_id,"-100234");
+    assert.equal(calls[1].data.message_id,92);
+    assert.equal(links.get(501),1);
+    const photo={update_id:602,message:{chat:{id:601,type:"private"},from,message_id:93,caption:"Новый экран",photo:[{file_id:"test",file_size:100}]}};
+    assert.equal((await call(env,photo)).status,200);
+    assert.equal(calls.length,3);
+    assert.equal(calls[2].method,"copyMessage");
+    assert.equal(calls[2].data.message_id,93);
+    assert.equal(links.get(502),1);
+    const admin={update_id:603,message:{chat:{id:-100234,type:"supergroup"},from:{id:87},message_id:1001,
+      text:"Проверьте версию",reply_to_message:{message_id:501}}};
+    assert.equal((await call(env,admin)).status,200);
+    assert.equal(calls.length,4);
+    assert.equal(calls[3].method,"copyMessage");
+    assert.equal(calls[3].data.chat_id,601);
+    const close={update_id:604,message:{chat:{id:-100234,type:"supergroup"},from:{id:87},message_id:1002,
+      text:"/close",reply_to_message:{message_id:502}}};
+    assert.equal((await call(env,close)).status,200);
+    assert.equal(tickets.get(1).status,"closed");
+    assert.equal(calls.length,4,"closing is silent both for admin group and user");
+  } finally { globalThis.fetch=original; }
 });
