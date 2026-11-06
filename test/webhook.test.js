@@ -173,8 +173,8 @@ test("AI shows typing before model call and sends a brief answer", async () => {
     if (String(url).includes("api.openai.com")) {
       assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
       const body = JSON.parse(init.body);
-      assert.equal(body.max_tokens, 160);
-      assert.match(body.messages[0].content, /1 or 2 short sentences/);
+      assert.equal(body.max_tokens, 300);
+      assert.match(body.messages[0].content, /1–3 short sentences/);
       return Response.json({ choices: [{ message: { content: JSON.stringify({
         action: "answer",
         answer: "HSK AI помогает изучать китайский язык."
@@ -899,7 +899,7 @@ test("photo with Russian interface criticism reaches vision instead of file-erro
     assert.equal((await call(env,m)).status,200);
     assert.deepEqual(topics,["knowledge/general.json"]);
     assert.equal(modelCalls.length,1);
-    assert.equal(modelCalls[0].max_tokens,320,"photos need enough output tokens for JSON");
+    assert.equal(modelCalls[0].max_tokens,380,"photos get enough output tokens for JSON");
     assert.ok(modelCalls[0].messages.at(-1).content.some(p=>p.type==="image_url"));
     assert.match(messages.at(-1).text,/экран тарифов/);
     assert.doesNotMatch(messages.at(-1).text,/Не удалось обработать файл/);
