@@ -29,6 +29,18 @@ export function contextualKnowledgeQuery(input,history=[]) {
   return question;
 }
 
+export function platformLoginFollowup(input,lang="ru",history=[]) {
+  if (!isPlatformOnly(input) || !recentAccountTopic(history)) return null;
+  const platform=String(input||"").trim().slice(0,22);
+  const l=lang==="tj"?"tj":lang==="uz"?"uz":"ru";
+  const messages={
+    ru:"Проблема со входом на "+platform+"? Уточните: не открывается вход или появляется ошибка Google/Telegram?",
+    tj:"Дар "+platform+" мушкили воридшавӣ чист: саҳифаи воридшавӣ кушода намешавад ё хатои Google/Telegram ҳаст?",
+    uz:platform+" орқали аккаунтга киришда нима бўляпти: кириш ойнаси очилмайдими ёки Google/Telegram хатосими?"
+  };
+  return messages[l]+"\nhttps://hskai.app/"+l+"/guide/faq/";
+}
+
 export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
   const q=String(input||"").toLowerCase().normalize("NFKC").trim();
   const a=String(answer||"").toLowerCase().normalize("NFKC");
