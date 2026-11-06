@@ -1,0 +1,18 @@
+{
+  "name": "hsk-ai-support",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone minimal HSK AI Telegram support bot on Cloudflare Workers",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute hsk-ai-support --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
