@@ -1,5 +1,8 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, parseAiDecision } from "./logic.js";
-import { COPY, FACTS, menu, explicitFaq } from "./content.js";
+import { COPY, menu, explicitFaq } from "./content.js";
+import { loadKnowledge } from "./knowledge.js";
+import { readConversation, storeConversation } from "./conversation.js";
+import { answerWithAi } from "./ai-router.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 const fail = (status) => new Response("unavailable", { status });
@@ -138,64 +141,19 @@ async function forwardToOperator(env, user, ctx, message = null) {
 }
 
 async function askAi(env, userId, lang, input) {
-  if (!env.AI && (!env.AI_API_KEY || !env.AI_MODEL)) return null;
-  const endpoint = env.AI_BASE_URL || "https://api.openai.com/v1/chat/completions";
-  if (!endpoint.startsWith("https://")) return null;
-  if (!await claimQuota(env, "ai-user:" + userId, 3)) return null;
-  if (!await claimQuota(env, "ai-global", 60)) return null;
-  const system = [
-    "You are the minimal HSK AI product support assistant, not a tutor.",
-    "Reply in " + (lang === "tj" ? "Tajik, using Cyrillic script" : lang === "uz" ? "Uzbek, using Cyrillic script" : "Russian, using Cyrillic script") + ". Write like a helpful human, not an instruction manual.",
-    "Use 1 or 2 short sentences, at most 220 characters total. No lists, headings, long explanations or formal introductions.",
-    "Ask only one simple follow-up question if needed. Do not use markdown or more than one emoji.",
-    "Only the following facts are confirmed:",
-    ...FACTS.map((item) => "- " + item),
-    "Never invent procedures or details absent from these facts.",
-    "If the user's issue needs checking their account, subscription, payment or a bug, hand off.",
-    'Output only valid JSON: {"action":"answer","answer":"..."} or {"action":"handoff","answer":""}.'
-  ].join("\n");
+  // Strictly require verified English R2 facts; never fall back to generic AI guesses.
+  if (!env.AI || !env.KB) return null;
+  const history = await readConversation(env, userId);
+  const knowledge = await loadKnowledge(env, input, history);
+  if (!knowledge) return null;
+  if (!await claimQuota(env, "ai-user:" + userId, 20)) return null;
+  if (!await claimQuota(env, "ai-global", 60)) return null; // provisional safety ceiling
   await showTyping(env, userId);
   const typingTimer = setInterval(() => { void showTyping(env, userId); }, 4000);
   try {
-    if (env.AI) {
-      const output = await env.AI.run(
-        env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
-        {
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: limitText(input, 650) }
-          ],
-          max_tokens: 160,
-          temperature: 0.1,
-          chat_template_kwargs: { enable_thinking: false }
-        }
-      );
-      const content = output?.response ?? output?.result?.response ??
-        output?.choices?.[0]?.message?.content ?? null;
-      const decision = parseAiDecision(content);
-      return decision?.action === "answer" ? decision.answer : null;
-    }
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", "authorization": "Bearer " + env.AI_API_KEY },
-      body: JSON.stringify({
-        model: env.AI_MODEL,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: limitText(input, 650) }
-        ],
-        max_tokens: 160
-      }),
-      signal: AbortSignal.timeout(6500)
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const answer = data?.choices?.[0]?.message?.content;
-    const decision = parseAiDecision(answer);
-    return decision?.action === "answer" ? decision.answer : null;
-  } catch {
-    console.warn("support_ai_unavailable");
-    return null;
+    const answer = await answerWithAi(env, lang, input, history, knowledge);
+    if (answer) await storeConversation(env, userId, history, input, answer);
+    return answer;
   } finally {
     clearInterval(typingTimer);
   }
