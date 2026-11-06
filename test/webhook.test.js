@@ -173,8 +173,8 @@ test("AI shows typing before model call and sends a brief answer", async () => {
     if (String(url).includes("api.openai.com")) {
       assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
       const body = JSON.parse(init.body);
-      assert.equal(body.max_tokens, 160);
-      assert.match(body.messages[0].content, /1 or 2 short sentences/);
+      assert.equal(body.max_tokens, 300);
+      assert.match(body.messages[0].content, /1–3 short sentences/);
       return Response.json({ choices: [{ message: { content: JSON.stringify({
         action: "answer",
         answer: "HSK AI помогает изучать китайский язык."
@@ -899,7 +899,7 @@ test("photo with Russian interface criticism reaches vision instead of file-erro
     assert.equal((await call(env,m)).status,200);
     assert.deepEqual(topics,["knowledge/general.json"]);
     assert.equal(modelCalls.length,1);
-    assert.equal(modelCalls[0].max_tokens,320,"photos need enough output tokens for JSON");
+    assert.equal(modelCalls[0].max_tokens,380,"photos get enough output tokens for JSON");
     assert.ok(modelCalls[0].messages.at(-1).content.some(p=>p.type==="image_url"));
     assert.match(messages.at(-1).text,/экран тарифов/);
     assert.doesNotMatch(messages.at(-1).text,/Не удалось обработать файл/);
@@ -979,4 +979,31 @@ test("official support links stay clickable without Telegram preview cards", asy
     assert.ok(userMessages[0].params.reply_markup,"/start keeps buttons");
     assert.equal(userMessages[2].params.reply_markup,undefined,"follow-up stays button-free");
   } finally {globalThis.fetch=oldFetch;}
+});
+
+
+test("Uzbek guide, iPhone link and resend requests are answered without repetitive fallback", async()=>{
+  const {env,tickets}=stub();
+  let modelCalls=0, nextId=8400;
+  env.AI={run:async()=>{modelCalls++;return {response:JSON.stringify({action:"answer",answer:"Модель жавоби"})}}};
+  const calls=[],orig=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    calls.push({method:String(url).split("/").pop(),data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:nextId++}});
+  };
+  const from={id:8400,language_code:"uz",username:"learner"};
+  const ask=(id,text)=>call(env,{update_id:id,message:{chat:{id:8400,type:"private"},from,message_id:id,text}});
+  try{
+    assert.equal((await ask(8401,"йўриқномасини юбора оласизми?")).status,200);
+    assert.equal((await ask(8402,"айфон иловасининг силкасини ташлаб беринг")).status,200);
+    assert.equal((await ask(8403,"силкани бошдан ташлаб бер нг")).status,200);
+    const messages=calls.filter(x=>x.method==="sendMessage").map(x=>x.data.text);
+    assert.equal(messages.length,3);
+    assert.match(messages[0],/hskai\.app\/uz\/guide\/faq/);
+    assert.match(messages[1],/https:\/\/hskai\.app/);
+    assert.match(messages[2],/https:\/\/hskai\.app/);
+    assert.ok(messages.every(m=>!m.includes("HSK AI ҳақидаги саволингизни аниқроқ ёзинг")));
+    assert.equal(modelCalls,0,"verified simple links should not waste any model tokens");
+    assert.equal(tickets.size,0);
+  }finally{globalThis.fetch=orig;}
 });
