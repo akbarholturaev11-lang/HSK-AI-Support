@@ -32,7 +32,7 @@ const TERMS = {
     /miniapp/u, /реферал/u, /referral/u
   ],
   general: [
-    /\bhsk\b/u, /хск/u, /курс/u, /lesson/u, /дарс/u, /урок/u,
+    /instagram/u, /инстаграм/u, /tiktok/u, /тикток/u, /youtube/u, /ютуб/u, /ютюб/u, /соцсет/u, /ижтимоий/u, /сайт/u, /website/u,\n    /\bhsk\b/u, /хск/u, /курс/u, /lesson/u, /дарс/u, /урок/u,
     /хитой/u, /китай/u, /chinese/u, /study/u, /дост\/п/u
   ]
 };
