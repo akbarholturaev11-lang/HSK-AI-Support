@@ -170,6 +170,18 @@
 
 **ЕЧИЛГАН:** Q1–Q17. Асосий манба — `HSK-AI-Bot/main`; KB учун 4 соатлик ChatGPT Scheduled Agent; owner'нинг ҳар сафар қўл тасдиғи йўқ. Q10/B: main'га кирган user-facing ўзгаришлар release'ни кутмасдан янгиланиши белгиланган (ишончли факт мазмуни сақланади). **ОЧИҚ МАҲСУЛОТ ҚАРОРИ ҚОЛМАДИ, ЛЕКИН ТЕХНИК ИЖРО/ТЕКШИРУВ ОЧИҚ:** R2 backup copy, автоматик агент қоидасини Q10 ва Q13'га мослаштириш, V2 AI/vision/router, billing лимитлари ва E2E тестлар. Billing ва production deployment алоҳида рухсатсиз фаоллаштирилмайди.
 
+### 8.1. Аудит 2026-11-06 — режа/амалдаги тизим фарқлари
+
+Бошдан охиригача аудитдан кейин эски ички зиддиятлар (расм operator-only vs Vision, D1 index vs keyword map, GitHub sync vs direct R2, `kb/` vs `knowledge/`, `last_checked_sha:null` vs synced, 3 vs 20 савол) ушбу режада тузатилди. **Қуйидагилар ҳали амалдаги тизим билан мувофиқлаштирилмаган — буни бажарилган деб ҳисобламаслик керак:**
+
+1. **P0 — Q10/B vs жорий Scheduled Agent prompt.** Режа `main`'га кирган аниқ user-facing фактни production deploy'ни кутмасдан KB'га қўшишни талаб қилади. Жорий task prompt эса `main`'нинг ўзи deploy исботи эмаслиги сабабли unreleased фактларни киритмасликни буюради. Иккала қоида бир хил эмас. **Керакли иш:** Scheduled Agent prompt'ни тасдиқланган Q10/B'га мослаштириш; кодда борлик ва ҳозир live'лиги ўртасида user'ни чалғитадиган даъво қилмаслик. Режадаги қарор тасдиқланган, лекин амалдаги агент қоидаси ҳали алмаштирилмаган.
+2. **P0 — Q13/A backup vs жорий Scheduled Agent prompt.** Ҳар topic'нинг 1 та фаол ва 1 та аввалги R2 файли сақланиши қабул қилинган. Жорий agent prompt upload'дан олдин previous snapshot олишни буюрмайди. **Керакли иш:** фақат ҳақиқий content ўзгарганда аввалги файлни `knowledge/backup/{topic}.json`га сақлаш, кейин `knowledge/{topic}.json`'ни янгилаш; хатода checkpoint олдинга сурилмасин ва имкони бўлса partial writes тиклансин. Ишончли rollback тестидан олдин ишга тушган деб ҳисобланмасин.
+3. **P0 — BOT_TOKEN махфийлиги.** Реал Cloudflare Worker settings'да `BOT_TOKEN` ҳали `plain_text` binding; режа token/credentials фақат Secret талаб қилади. **Керакли иш:** бир хил binding name'ни сақлаб Cloudflare Secret сифатида хавфсиз кўчириш, webhook/sendMessage smoke-test; агар token очиққа чиққани аниқланса Telegram'да rotate қилиш. Қийматни GitHub, prompt, лог ёки KB'да кўрсатмаслик. `ADMIN_CHAT_ID` ва `WEBHOOK_SECRET` аллақачон `secret_text`.
+4. **P1 — Scheduled Agent end-to-end текшируви.** 4 соатлик schedule `enabled`, лекин бу жадвалнинг борлиги ҳар келаси цикл ҳақиқатан Github diff ўқиб R2'га тўғри ёзганини исботламайди. Checkpoint, last run, fail/retry ва silent no-change behavior синов билан тасдиқланади.
+5. **P1 — расм махфийлиги.** Скриншот ташқи vision model'га узатилганда ундаги матн ҳам model провайдерига юборилиши мумкин. Шахсий ҳужжат, карта реквизити ёки тўлов чекини AI мустақил тасдиқламайди; юқори хавфли ёки аниқ сезгир расмни операторга тўғридан-тўғри бериш қоидаси ва data exposure'ни камайтириш усули staging тестда текширилади.
+
+**Аудит чегараси:** бу текширув GitHub режасининг матнини тузатди, live agent prompt, webhook, Cloudflare production/billing ва Worker AI кодини ўзгартирмади. Қабул қилинган қарорларни ўзгартириш шарт эмас; техник ижро қолган.
+
 ## 9. Ҳали бажарилмаган реализация ишлари
 
 **R2 bucket ва KB Worker binding аллақачон яратилди**; бу ўзи ботнинг жавоб бериш мантиғини ўзгартирмайди. AI Gateway paid route, D1 schema migration ва KB retrieval code ҳали йўқ. Ҳозирги Support Bot одатдагидек ишлашда давом этади.
