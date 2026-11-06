@@ -77,7 +77,7 @@ async function backupProvider(env,messages,imageDataUrl,claimQuota) {
   // Conservative call-count budget guard: this is NOT the Cloudflare billing hard cap.
   if (!await claimQuota(env,"backup-day",20)) return null;
   const month = new Date().toISOString().slice(0,7);
-  if (!await claimQuota(env,"backup-month:"+month,300)) return null;
+  if (!await claimQuota(env,"backup-month",300,month)) return null;
   try {
     const configuredRoute = String(env.AI_GATEWAY_BACKUP_ROUTE || "").trim();
     const useRoute = Boolean(configuredRoute && env.AI_GATEWAY_ID);
