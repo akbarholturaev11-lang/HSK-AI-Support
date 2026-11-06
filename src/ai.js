@@ -1,4 +1,3 @@
-import { FACTS } from "./content.js";
 import { limitText, parseAiDecision } from "./logic.js";
 import { lookupKnowledge } from "./knowledge.js";
 import { loadRecentConversation, saveConversationExchange } from "./conversation.js";
@@ -103,8 +102,8 @@ export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=
   // When the production KB binding exists, never answer using stale hard-coded
   // facts if the requested R2 topic is unknown, missing or invalid.
   const kb = await lookupKnowledge(env,input || "HSK AI screenshot");
-  if (kb.status !== "ok" && kb.status !== "unconfigured") return null;
-  const facts = kb.status === "ok" ? kb.facts : FACTS;
+  if (kb.status !== "ok") return null;
+  const facts = kb.facts;
   // Count only genuine AI attempts; invalid/unknown KB goes to an operator for free.
   if (!await claimQuota(env,"ai-user:"+userId,20)) return null;
   if (!await claimQuota(env,"ai-global",600)) return null;
