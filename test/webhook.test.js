@@ -75,7 +75,9 @@ function stub() {
     }
   }; } }; } };
   return {
-    env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake" },
+    env: { DB, BOT_TOKEN: "fake_token", WEBHOOK_SECRET: "secret", ADMIN_CHAT_ID: "-100234", AI_MODEL: "fake",
+      KB: { async get(key) {const topic=key.slice(10,-5);return {async json(){return {topic,source_commit:"c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073",facts:["HSK AI is a Chinese language learning product."]}}}}}
+    },
     calls, users, tickets, links, settings, quotas
   };
 }
@@ -541,4 +543,20 @@ test("V2 blocks internal PWA config and personal payment status",async()=>{
     assert.equal(aiCalls,1,"personal payment status must not reach AI");
     assert.equal(tickets.size,2);
   }finally{globalThis.fetch=original;}
+});
+
+
+test("V2 missing R2 binding fails closed instead of using stale local FACTS",async()=>{
+  const {env,tickets}=stub();
+  delete env.KB;
+  let aiCalls=0;
+  env.AI={run:async()=>{aiCalls++;return {response:"{}"}}};
+  const orig=globalThis.fetch;
+  globalThis.fetch=async()=>Response.json({ok:true,result:{message_id:3000}});
+  try{
+    const u={update_id:9990,message:{chat:{id:9990,type:"private"},from:{id:9990,language_code:"ru"},message_id:90,text:"Что такое HSK AI?"}};
+    assert.equal((await call(env,u)).status,200);
+    assert.equal(aiCalls,0);
+    assert.equal(tickets.size,1);
+  }finally{globalThis.fetch=orig;}
 });
