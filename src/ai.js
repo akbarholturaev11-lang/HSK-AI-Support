@@ -79,10 +79,14 @@ async function backupProvider(env,messages,imageDataUrl,claimQuota) {
   const month = new Date().toISOString().slice(0,7);
   if (!await claimQuota(env,"backup-month:"+month,300)) return null;
   try {
-    const response=await env.AI.run(env.BACKUP_MODEL || BACKUP_MODEL,{
+    const configuredRoute = String(env.AI_GATEWAY_BACKUP_ROUTE || "").trim();
+    const useRoute = Boolean(configuredRoute && env.AI_GATEWAY_ID);
+    const model = useRoute ? "dynamic/" + configuredRoute : (env.BACKUP_MODEL || BACKUP_MODEL);
+    const options = useRoute ? { gateway:{ id:String(env.AI_GATEWAY_ID) } } : undefined;
+    const response=await env.AI.run(model,{
       messages,max_completion_tokens:768,reasoning_effort:"low",
       ...(imageDataUrl ? {image:imageDataUrl}: {})
-    });
+    },options);
     return decide(response);
   }catch {
     console.warn("support_backup_ai_unavailable");
