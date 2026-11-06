@@ -349,3 +349,32 @@ test("ticket with no Telegram username retains user ID and safe fallback", async
     assert.match(calls[0].text, /ID: <code>108<\/code>/);
   } finally { globalThis.fetch = previous; }
 });
+
+test("V2 allows 20 AI answers per day, while FAQ messages remain unlimited", async () => {
+  const { env, tickets } = stub();
+  let aiCalls = 0;
+  env.AI = { async run() {
+    aiCalls++;
+    return { response: JSON.stringify({ action:"answer", answer:"HSK AI помогает изучать китайский язык." }) };
+  } };
+  const outgoing = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    outgoing.push({ method:String(url).split("/").pop(), body:JSON.parse(init.body) });
+    return Response.json({ ok:true, result:{ message_id: 1000 + outgoing.length } });
+  };
+  const make = (id, userId, text) => ({ update_id:id, message:{
+    chat:{id:userId,type:"private"}, from:{id:userId,language_code:"ru"},
+    message_id:id, text
+  } });
+  try {
+    for (let i=0;i<21;i++)
+      assert.equal((await call(env, make(5000+i,333,"Что такое HSK AI?"))).status,200);
+    assert.equal(aiCalls,20, "only twenty AI calls per user in one day");
+    assert.equal(tickets.size,1, "the over-limit request is handed to one operator ticket");
+    for (let i=0;i<65;i++)
+      assert.equal((await call(env, make(6000+i,444,"подписка"))).status,200);
+    assert.equal(outgoing.filter(x=>x.method==="sendMessage" && x.body.chat_id===444).length,65,
+      "fixed FAQ is not restricted by the AI quota or legacy message quota");
+  } finally { globalThis.fetch = original; }
+});
