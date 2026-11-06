@@ -40,8 +40,9 @@ test("FAQ and menu are localized", () => {
   assert.equal(menu("ru").inline_keyboard[1][1].callback_data, "help:operator");
 });
 
-test("long robotic AI answers are rejected rather than sent", () => {
-  assert.equal(parseAiDecision(JSON.stringify({ action: "answer", answer: "а".repeat(221) })), null);
+test("AI supports a helpful 220-450 character explanation but rejects long monologues", () => {
+  assert.equal(parseAiDecision(JSON.stringify({ action: "answer", answer: "а".repeat(221) }))?.answer.length, 221);
+  assert.equal(parseAiDecision(JSON.stringify({ action: "answer", answer: "а".repeat(451) })), null);
   assert.deepEqual(
     parseAiDecision(JSON.stringify({ action: "answer", answer: "Да, помогу! Уточните, что не работает." })),
     { action: "answer", answer: "Да, помогу! Уточните, что не работает." }
