@@ -6,6 +6,15 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 
 **Architecture:** Cloudflare Workers + Cloudflare D1 + native Workers AI + Telegram Bot API. **No requests to the main HSK AI Railway backend.**
 
+## Knowledge Base (R2)
+
+- Private R2 Standard bucket: `hsk-ai-support-kb` (Eastern Europe).
+- Support Worker binding: `KB`; the Telegram/AI response flow does **not** yet retrieve KB files. Do not represent retrieval as deployed until V2 tests and code are merged.
+- First English-only, topic-specific files in R2: `knowledge/payments.json`, `subscriptions.json`, `accounts.json`, `android.json`, `pwa.json`, `telegram.json` and `general.json`.
+- `knowledge/sync_state.json` stores the last checked `HSK-AI-Bot/main` commit SHA. It was bootstrapped to `c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073` after verifying all seven R2 objects.
+- The active ChatGPT task **HSK AI KB Sync** is scheduled every four hours, checks changes in GitHub `main`, and is configured to update **only changed** English R2 topic files directly through Cloudflare. The first *future scheduled* run has not yet been independently verified.
+- No GitHub Actions upload workflow and no separate S3 credentials are required for this connector-based path. The currently configured GitHub Actions workflow runs code tests only.
+
 ## Features
 
 - RU/TJ/UZ language and source detection from Telegram deep links; Telegram-language fallback.
