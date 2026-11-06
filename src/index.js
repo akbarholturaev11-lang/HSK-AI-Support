@@ -430,6 +430,13 @@ export default {
   async scheduled(controller, env) {
     if (controller.cron === "*/5 * * * *") {
       await registerWebhookOnce(env);
+      // Context must expire close to the one-hour TTL; daily prune is too late.
+      try {
+        await env.DB.prepare("DELETE FROM ai_conversation WHERE created_at < ?")
+          .bind(Math.floor(Date.now()/1000)-3600).run();
+      } catch {
+        // Schema migration is deployed separately; don't break the webhook cron.
+      }
       return;
     }
     if (controller.cron === "0 3 * * *") {
