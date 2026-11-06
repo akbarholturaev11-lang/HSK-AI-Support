@@ -266,7 +266,7 @@ async function handlePrivate(env, message) {
     }
     const answer=await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image);
     if(answer===AI_NO_FACTS) {
-      await sendUser(env,user.id,copy.noKnowledge);
+      await sendUser(env,user.id,isUiFeedback(caption)?copy.uiFeedbackAck:copy.noKnowledge);
       return;
     }
     if(answer===AI_QUOTA) {
@@ -298,7 +298,9 @@ async function handlePrivate(env, message) {
     // Existing short-lived D1 memory is reused; no new table or external call.
     await clearConversationContext(env,user.id);
     await saveConversationExchange(env,user.id,
-      "FAQ selected by user: "+text, "Support FAQ topic: "+faq);
+      "FAQ selected by user: "+text, "Selected support topic: "+(
+        faq===copy.account?"Account and sign-in":faq===copy.payment?"Pro subscription payment":"Technical issue"
+      ));
     return;
   }
   if (shouldAvoidAi(text)) {
@@ -349,8 +351,10 @@ async function handleCallback(env, callback) {
   const key = action.slice(5);
   await clearConversationContext(env,callback.from.id);
   // The FAQ click is context for AI, not a new canned Telegram message.
+  const selected={payment:"Pro subscription payment",account:"Account and sign-in",
+    bug:"Technical issue"};
   await saveConversationExchange(env,callback.from.id,
-    "FAQ selected: "+key, "Support topic: "+copy[key]);
+    "FAQ selected: "+key, "Selected support topic: "+selected[key]);
 
 }
 
