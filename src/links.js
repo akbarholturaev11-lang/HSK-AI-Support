@@ -15,6 +15,7 @@ function faqUrl(lang) {
 
 export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
   const q=String(input||"").toLowerCase().normalize("NFKC");
+  const askingPwa=/(?:iphone|айфон|ios|\bpwa\b)/u.test(q);
   const previous=history.filter(x=>x.role==="user").slice(-2)
     .map(x=>String(x.content||"")).join(" ").toLowerCase();
   if (/instagram|инстаграм|инста\b/u.test(q)) return OFFICIAL_LINKS.instagram;
@@ -26,7 +27,7 @@ export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
       /(?:guide|faq)/u.test(previous) && /(?:силка|ссылк|ҳавола|линк)/u.test(q))
     return faqUrl(lang);
   if ((/(?:android|андроид|apk\b)/u.test(q) && /(?:скача|download|юклаб|установ|ўрнат|силка|ссылк|ҳавола)/u.test(q)) ||
-      /(?:силка|ссылк|ҳавола|линк)/u.test(q) && /(?:android|андроид)/u.test(previous) &&
+      !askingPwa && /(?:силка|ссылк|ҳавола|линк)/u.test(q) && /(?:android|андроид)/u.test(previous) &&
       /(?:скача|download|юклаб|установ|ўрнат)/u.test(previous))
     return OFFICIAL_LINKS.download;
   if (/^(?:официальный сайт|сайт hsk ai|расмий сайт|website hsk ai)$/u.test(q))
