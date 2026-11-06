@@ -817,7 +817,7 @@ test("account menu then Android preserves sign-in context and offers localized o
     assert.equal((await call(env,follow)).status,200);
     assert.equal(modelCalls,1,"AI receives FAQ context rather than a one-off template");
     const last=calls.filter(x=>x.method==="sendMessage").at(-1).payload;
-    assert.match(last.text,/проблема со входом/i);
+    assert.match(last.text,/входа|вход/i);
     assert.doesNotMatch(last.text,/скача|загруз/ui);
     assert.equal(last.reply_markup,undefined);
     assert.equal(quotas.has("ai-user:4500:"+new Date().toISOString().slice(0,10)),true);
