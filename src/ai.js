@@ -1,5 +1,5 @@
 import { limitText, parseAiDecision } from "./logic.js";
-import { discoverKnowledgeTopics, rankKnowledgeTopics, readKnowledgeTopics, knowledgeEvidenceFacts } from "./knowledge.js";
+import { discoverKnowledgeTopics, rankKnowledgeTopics, readKnowledgeTopics, knowledgeEvidenceFacts, selectContextualKnowledgeTopics } from "./knowledge.js";
 import { appendOfficialLink, isApprovedLinkResponse } from "./links.js";
 import { loadRecentConversation, saveConversationExchange } from "./conversation.js";
 import { detectReplyLanguage, isObviouslyWrongLanguage, isConversationalTurn, languageGuide } from "./language.js";
@@ -162,8 +162,13 @@ export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=
 
   if(!env.KB) return null;
   const catalogue=await discoverKnowledgeTopics(env);
-  const order=rankKnowledgeTopics(input||"HSK AI screenshot",history,catalogue.topics);
+  const question=input||"HSK AI screenshot";
+  const order=rankKnowledgeTopics(question,history,catalogue.topics);
   if(!order.length)return null;
+  // Don't open unrelated files on the first pass. Keep the old single-topic
+  // behavior for precise questions, and a few subjects for mixed questions.
+  const primaryCount=Math.min(KB_FIRST_TOPICS,Math.max(1,
+    selectContextualKnowledgeTopics(question,history).length));
   const checked=new Set();
   const records=[];
   let requested=[];
@@ -172,7 +177,7 @@ export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=
     if(!unread.length) break;
     let topics;
     if(round===0){
-      topics=unread.slice(0,KB_FIRST_TOPICS);
+      topics=unread.slice(0,primaryCount);
     }else if(round===KB_MAX_AI_ROUNDS-1){
       // Last search pass examines every remaining record. Never leave an
       // undiscovered, available KB topic unread because of a fixed 2-file limit.
@@ -210,6 +215,9 @@ export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=
       if(!imageDataUrl)await saveConversationExchange(env,userId,input,answer);
       return answer;
     }
+    // A malformed or unsafe model response is not a KB miss. Do not retry
+    // until a potentially unsafe reply is accidentally accepted.
+    if(!outcome || outcome.status==="unavailable")return null;
     if(!remaining.length){
       // Report no verified information only after all available KB topics
       // were actually opened. Never claim a code or payment fact from memory.
@@ -217,8 +225,8 @@ export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=
         AI_NO_FACTS:null;
     }
     requested=outcome?.status==="search_more" ? outcome.topics : [];
-    // Handoff and malformed/invalid answers also get the next chance to
-    // locate relevant evidence, rather than immediately dismissing the user.
+    // Only explicit insufficient-evidence decisions request more verified
+    // knowledge. Invalid model answers fail closed rather than being retried.
   }
   return records.length ? AI_NO_FACTS : null;
 }
