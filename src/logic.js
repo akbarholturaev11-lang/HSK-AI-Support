@@ -54,6 +54,15 @@ export function requiresHumanVerification(input) {
 
 // User feedback is a support question, not an operator ticket or proof of a
 // broken file. This classifies only UI comments; it never verifies an account.
+// A concrete screenshot error should reach human support even if the
+// assistant can explain the error or suggest a workaround.
+export function isExplicitScreenshotError(input) {
+  const s=String(input||"").toLowerCase().normalize("NFKC").slice(0,650);
+  return s.length>=12 &&
+    /(?:хатолик|хато\b|ошибк|сбой|error|failed|failure|не\s+отвеча|не\s+работа|ишламай|ишламаяп|чиқ(?:аяп|яп|ди)|вылета|crash|broken|муаммо\s+бор|мушкил\s+дорад|намекунад)/u.test(s) &&
+    !/^(?:что\s+значит|что\s+такое|что\s+означает|нима\s+дегани)/u.test(s);
+}
+
 export function isUiFeedback(input) {
   const s=String(input||"").toLowerCase().normalize("NFKC").slice(0,650);
   const ui=/(?:интерфейс|дизайн|оформлен|экран|страниц|кнопк|шрифт|располож|юзабилити|\bux\b|\bui\b|layout|кўриниш|куриниш|ранг|намуд|интерфейси)/u.test(s);
