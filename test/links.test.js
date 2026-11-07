@@ -40,6 +40,10 @@ test("iPhone PWA follow-up sends full link; Android and site remain distinct",()
 });
 
 test("learning Telegram bot and news channel never get conflated",()=>{
+  assert.equal(OFFICIAL_LINKS.telegramNews,"https://t.me/hskaiapp");
+  assert.equal(OFFICIAL_LINKS.support,"https://t.me/hskai_support_bot");
+  assert.equal(chooseOfficialLink("Ссылка на бот поддержки HSK AI","", "ru"),OFFICIAL_LINKS.support);
+  assert.equal(chooseOfficialLink("Поддержка Telegram бот","", "ru"),OFFICIAL_LINKS.support);
   assert.equal(chooseOfficialLink("Ссылка на Telegram бот","", "ru"),OFFICIAL_LINKS.telegram);
   assert.equal(chooseOfficialLink("Telegram янгиликлар канали ҳаволаси","", "uz"),OFFICIAL_LINKS.telegramNews);
   assert.equal(chooseOfficialLink("Ссылка на канал","", "ru",[{role:"user",content:"Telegram новости"}]),OFFICIAL_LINKS.telegramNews);
