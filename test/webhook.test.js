@@ -1617,3 +1617,24 @@ test("E2E screenshot + later feedback forwards its ORIGINAL photo to operator on
     assert.equal(modelCalls,1);
   }finally{globalThis.fetch=oldFetch;}
 });
+
+
+test("E2E operator opt-in during screenshot hold forwards the original image and prevents AI timeout",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+  globalThis.fetch=f.stubFetch;
+  try{
+    await call(f.env,f.photo(508001));
+    assert.equal(f.queueSent.length,1);
+    assert.equal(f.getAiCalls(),0);
+    await call(f.env,f.textMsg(508002,"/operator"));
+    const admin=f.telegramCalls.filter(x=>x.body.chat_id==="-100234");
+    assert.deepEqual(admin.map(x=>x.method),["sendMessage","copyMessage"]);
+    assert.equal(admin[1].body.from_chat_id,83001);
+    assert.equal(admin[1].body.message_id,508001);
+    assert.equal(f.records.size,0);
+    const q=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(q,f.env);
+    assert.equal(q.messages[0].acknowledged,true);
+    assert.equal(f.getAiCalls(),0);
+  }finally{globalThis.fetch=oldFetch;}
+});
