@@ -10,6 +10,7 @@ export const OFFICIAL_LINKS=Object.freeze({
   telegram:"https://t.me/darsi_chini_bot",
   telegramNews:"https://t.me/hskaiapp",
   support:"https://t.me/hskai_support_bot",
+  facebook:"https://facebook.com/1159152280609531",
   instagram:"https://www.instagram.com/hskai.app",
   instagramTj:"https://www.instagram.com/hskai.apptj/",
   tiktok:"https://www.tiktok.com/@hskai.app",
@@ -70,6 +71,7 @@ export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
   if (/(?:поддержк|support|ёрдам|ѐрдам|ёрӣ|оператор|қўллаб.қувват|қуллаб.қувват)/u.test(q) &&
       (wantsLink || /(?:бот|bot|telegram|телеграм|контакт|ссылка|силк|ҳавола|хавола)/u.test(q)))
     return OFFICIAL_LINKS.support;
+  if (/facebook|фейсбук|фейсбук/u.test(q)) return OFFICIAL_LINKS.facebook;
   if (/instagram|инстаграм|инста\b/u.test(q))
     return preferTajik(q,lang)?OFFICIAL_LINKS.instagramTj:OFFICIAL_LINKS.instagram;
   if (/tiktok|тикток|тик ток/u.test(q))
