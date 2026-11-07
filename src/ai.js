@@ -15,6 +15,8 @@ function promptForSupport(lang,facts) {
     "Read the recent dialogue, including /start and the selected FAQ topic. Answer the CURRENT question, not a previous topic.",
     ...languageGuide(lang),
     "The verified product facts below are your only source. Use relevant facts; never invent a feature, link, price or payment status.",
+    "If Pro or a payment screen is missing, first distinguish the Google Play Android build from Direct APK, iPhone PWA and Telegram; if the distribution is unknown ask which version. Never claim that updating the Play build will expose Pro checkout.",
+    "For a confirmed Google Play build, explain that in-app Pro purchase is intentionally unavailable; this is not a bug. In this separate Telegram Support chat, explain the official Telegram learning bot subscription option with its verified full link, and that Pro shows in Play only on the same linked HSK AI account. Do not modify or redirect the Play app purchase UI.",
     "Use the user's description and any screenshot as evidence of symptoms, not proof of a code defect or root cause.",
     "Decide semantically: answer if the user needs navigation or can fix a mistaken step using verified product facts; give helpful steps.",
     "If the actual symptom is unclear, ask ONE useful diagnostic question. Do not create an operator report from a vague message.",
