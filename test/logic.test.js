@@ -97,3 +97,11 @@ test("Gemma sometimes omits action only for ordinary answers; missing report act
     {action:"answer",answer:"Раздел уроков находится в приложении HSK AI."});
   assert.equal(parseAiDecision("Баг исправлен"),null);
 });
+
+test("AI image share flag must be a boolean and is never inferred when absent",()=>{
+  const base={action:"report",kind:"bug",answer:"Похоже на сбой.",summary:"Приложение закрывается сразу после запуска урока."};
+  assert.deepEqual(parseAiDecision(JSON.stringify({...base,image_safe_to_share:true})),{...base,image_safe_to_share:true});
+  assert.deepEqual(parseAiDecision(JSON.stringify({...base,image_safe_to_share:false})),{...base,image_safe_to_share:false});
+  assert.equal(parseAiDecision(JSON.stringify({...base,image_safe_to_share:"yes"})),null);
+  assert.deepEqual(parseAiDecision(JSON.stringify(base)),base);
+});
