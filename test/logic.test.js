@@ -78,3 +78,22 @@ test("visual feedback identifies UX criticisms but not personal payment checks",
   assert.equal(isUiFeedback("Как войти в аккаунт?"),false);
   assert.equal(isUiFeedback("Как открыть интерфейс оплаты?"),false);
 });
+
+test("AI report JSON validates classification and factual summary",()=>{
+  const x={action:"report",kind:"bug",answer:"Похоже на сбой. Уточните модель телефона.",summary:"Приложение закрывается сразу после открытия урока."};
+  assert.deepEqual(parseAiDecision(JSON.stringify(x)),x);
+  assert.equal(parseAiDecision(JSON.stringify({...x,kind:"account_takeover"})),null);
+  assert.equal(parseAiDecision(JSON.stringify({...x,summary:"ok"})),null);
+  assert.equal(parseAiDecision(JSON.stringify({...x,answer:"ok"})),null);
+  assert.equal(parseAiDecision(JSON.stringify({...x,summary:"x".repeat(241)})),null);
+});
+
+test("Gemma sometimes omits action only for ordinary answers; missing report action is rejected",()=>{
+  assert.deepEqual(parseAiDecision(JSON.stringify({answer:"Откройте вкладку Курсы."})),{action:"answer",answer:"Откройте вкладку Курсы."});
+  assert.deepEqual(parseAiDecision(JSON.stringify({kind:"bug",answer:"Похоже на сбой.",summary:"Приложение неожиданно закрывается."})),
+    {action:"report",kind:"bug",answer:"Похоже на сбой.",summary:"Приложение неожиданно закрывается."});
+  assert.equal(parseAiDecision(JSON.stringify({kind:"feedback",answer:"Кнопку можно увеличить."})),null);
+  assert.deepEqual(parseAiDecision("Раздел уроков находится в приложении HSK AI."),
+    {action:"answer",answer:"Раздел уроков находится в приложении HSK AI."});
+  assert.equal(parseAiDecision("Баг исправлен"),null);
+});

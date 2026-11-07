@@ -61,6 +61,11 @@ function stub() {
       if (sql.startsWith("INSERT OR REPLACE INTO admin_links")) {
         links.set(args[0], args[1]); return { meta: { changes: 1 } };
       }
+      if (sql.startsWith("UPDATE tickets SET source=")) {
+        const t=tickets.get(args[2]);
+        if(t && t.source==="ai_report"){t.source=args[0];return {meta:{changes:1}};}
+        return {meta:{changes:0}};
+      }
       if (sql.startsWith("UPDATE tickets SET status")) {
         const t = tickets.get(args[1]); if (t) t.status = "closed";
         return { meta: { changes: t ? 1 : 0 } };
@@ -173,7 +178,7 @@ test("AI shows typing before model call and sends a brief answer", async () => {
     if (String(url).includes("api.openai.com")) {
       assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
       const body = JSON.parse(init.body);
-      assert.equal(body.max_tokens, 300);
+      assert.equal(body.max_tokens, 450);
       assert.match(body.messages[0].content, /Read the recent dialogue/);
       return Response.json({ choices: [{ message: { content: JSON.stringify({
         action: "answer",
@@ -899,7 +904,7 @@ test("photo with Russian interface criticism reaches vision instead of file-erro
     assert.equal((await call(env,m)).status,200);
     assert.deepEqual(topics,["knowledge/general.json"]);
     assert.equal(modelCalls.length,1);
-    assert.equal(modelCalls[0].max_tokens,380,"photos get enough output tokens for JSON");
+    assert.equal(modelCalls[0].max_tokens,540,"photos get enough output tokens for JSON");
     assert.ok(modelCalls[0].messages.at(-1).content.some(p=>p.type==="image_url"));
     assert.match(messages.at(-1).text,/экран тарифов/);
     assert.doesNotMatch(messages.at(-1).text,/Не удалось обработать файл/);
@@ -1066,4 +1071,138 @@ test("start and every FAQ selection reach AI context; R2 checks nearest topic an
     assert.ok(reads.includes("knowledge/accounts.json"));
     assert.match(calls.filter(x=>x.method==="sendMessage").at(-1).body.text,/Google или Telegram/);
   }finally{globalThis.fetch=before;}
+});
+
+test("AI identifies a credible crash, forwards redacted report and keeps answering", async()=>{
+  const {env,calls,tickets,links}=stub();
+  const events=[];
+  env.AI={run:async()=>({response:JSON.stringify({
+    action:"report",kind:"bug",
+    answer:"Похоже, приложение неожиданно закрывается после открытия урока.",
+    summary:"Приложение закрывается сразу после открытия урока на Android."
+  })})};
+  const old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();
+    events.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:800+events.length}});
+  };
+  try {
+    const from={id:3001,language_code:"ru",username:"user_crash"};
+    const msg=(id,txt)=>({update_id:id,message:{chat:{id:3001,type:"private"},from,message_id:id,text:txt}});
+    assert.equal((await call(env,msg(8001,"Android приложение вылетает, когда открываю урок 2"))).status,200);
+    assert.equal(events.filter(e=>e.data.chat_id==="-100234"&&e.method==="sendMessage").length,1);
+    assert.match(events.find(e=>e.data.chat_id==="-100234").data.text,/Possible defect/);
+    assert.equal(tickets.size,1);
+    assert.equal([...tickets.values()][0].source,"ai_report");
+    assert.equal(events.filter(e=>e.data.chat_id===3001&&e.method==="sendMessage").length,1);
+    assert.match(events.find(e=>e.data.chat_id===3001&&e.method==="sendMessage").data.text,/Передал описание оператору/);
+    assert.ok(links.size>0);
+    // A later question must be processed by AI rather than copied to human operator.
+    env.AI.run=async()=>({response:JSON.stringify({action:"answer",answer:"Откройте раздел уроков в приложении."})});
+    assert.equal((await call(env,msg(8002,"Где находятся уроки HSK?"))).status,200);
+    assert.equal(events.filter(e=>e.method==="copyMessage").length,0);
+    assert.ok(events.some(e=>e.data.chat_id===3001&&e.data.text==="Откройте раздел уроков в приложении."));
+  } finally {globalThis.fetch=old;}
+});
+
+test("AI feedback is reported, but navigation confusion stays a normal AI answer",async()=>{
+  const {env,tickets}=stub();
+  let response={action:"answer",answer:"Для занятий откройте вкладку Курсы и выберите уровень."};
+  env.AI={run:async()=>({response:JSON.stringify(response)})};
+  const events=[],old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();events.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:2000+events.length}});
+  };
+  try{
+    const from={id:3040,language_code:"ru"};
+    const mk=(id,text)=>({update_id:id,message:{chat:{id:3040,type:"private"},from,message_id:id,text}});
+    assert.equal((await call(env,mk(9001,"Я по ошибке открыл настройки, где уроки?"))).status,200);
+    assert.equal(tickets.size,0);
+    response={action:"report",kind:"feedback",answer:"Спасибо, этот момент интерфейса действительно стоит улучшить.",summary:"Пользователю трудно различать переходы между экранами настроек и уроков."};
+    assert.equal((await call(env,mk(9002,"Неудобно, что в интерфейсе кнопка урока почти незаметна"))).status,200);
+    assert.equal(tickets.size,1);
+    assert.ok(events.some(e=>e.method==="sendMessage"&&e.data.chat_id==="-100234"&&e.data.text.includes("Product feedback")));
+  } finally{globalThis.fetch=old;}
+});
+
+test("AI report delivery failure is disclosed, never falsely confirmed",async()=>{
+  const {env,tickets}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({
+    action:"report",kind:"bug",answer:"Похоже на ошибку приложения.",
+    summary:"Приложение закрывается после нажатия кнопки начала урока."
+  })})};
+  const events=[],old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();const data=JSON.parse(init.body);
+    events.push({method,data});
+    if(method==="sendMessage"&&data.chat_id==="-100234")return Response.json({ok:false,description:"unavailable"},{status:503});
+    return Response.json({ok:true,result:{message_id:4000+events.length}});
+  };
+  try{
+    const msg={update_id:9100,message:{chat:{id:3150,type:"private"},
+      from:{id:3150,language_code:"ru"},message_id:9100,text:"После нажатия начать урок приложение полностью закрывается"}};
+    assert.equal((await call(env,msg)).status,200);
+    assert.ok(events.some(e=>e.data.chat_id===3150&&/Не смог передать обращение/.test(e.data.text)));
+    assert.ok(!events.some(e=>e.data.chat_id===3150&&/Передал описание оператору/.test(e.data.text)));
+    assert.ok([...tickets.values()].every(t=>t.status==="closed"));
+  } finally{globalThis.fetch=old;}
+});
+
+test("explicit /operator upgrades an auto report into human-chat mode",async()=>{
+  const {env,tickets}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({
+    action:"report",kind:"feedback",answer:"Этот отзыв полезен.",
+    summary:"Кнопки уроков плохо различимы на экране телефона."
+  })})};
+  const events=[],old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop();
+    events.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:5000+events.length}});
+  };
+  try {
+    const from={id:3220,language_code:"ru"};
+    const mk=(id,text)=>({update_id:id,message:{chat:{id:3220,type:"private"},from,message_id:id,text}});
+    await call(env,mk(9200,"Мне не нравится дизайн кнопок урока, плохо видно"));
+    assert.equal([...tickets.values()][0].source,"ai_report");
+    await call(env,mk(9201,"/operator"));
+    assert.notEqual([...tickets.values()][0].source,"ai_report");
+    await call(env,mk(9202,"Передайте оператору ещё эту деталь"));
+    assert.equal(events.filter(e=>e.method==="copyMessage"&&e.data.chat_id==="-100234").length,1);
+  }finally{globalThis.fetch=old;}
+});
+
+test("screenshot triage sends only redacted text summary, not raw image to operator",async()=>{
+  const {env}=stub();
+  let imageProvided=false;
+  env.AI={run:async(model,request)=>{
+    imageProvided=Array.isArray(request.messages.at(-1).content)&&
+      request.messages.at(-1).content.some(p=>p.type==="image_url");
+    return {response:JSON.stringify({
+      action:"report",kind:"bug",answer:"На скриншоте видно сообщение об ошибке. Описание передам для проверки.",
+      summary:"После запуска теста на Android появляется сообщение об ошибке."
+    })};
+  }};
+  const calls=[],old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const name=String(url);
+    if(name.includes("/file/bot"))return new Response(Uint8Array.from([
+      0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),{status:200,headers:{"content-type":"image/png"}});
+    const method=name.split("/").pop();
+    calls.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:method==="getFile"?{file_path:"photos/picture.png"}:{message_id:7000+calls.length}});
+  };
+  try{
+    const update={update_id:9333,message:{chat:{id:3333,type:"private"},from:{id:3333,language_code:"ru"},
+      message_id:9333,caption:"После урока показана ошибка",photo:[{file_id:"safe-photo",file_size:8}]}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(imageProvided,true);
+    const admin=calls.filter(x=>String(x.data.chat_id)==="-100234");
+    assert.equal(admin.length,1);
+    assert.equal(admin[0].method,"sendMessage");
+    assert.ok(admin[0].data.text.includes("image not auto-forwarded"));
+    assert.equal(calls.filter(x=>x.method==="copyMessage").length,0);
+  }finally{globalThis.fetch=old;}
 });
