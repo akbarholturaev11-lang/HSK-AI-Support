@@ -1,5 +1,5 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback, isExplicitScreenshotError } from "./logic.js";
-import { COPY, menu, explicitFaq } from "./content.js";
+import { COPY, explicitFaq } from "./content.js";
 import { generateSupportAnswer, AI_NO_FACTS } from "./ai.js";
 import { saveConversationExchange, clearConversationContext, sanitizeConversationText } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
@@ -412,10 +412,10 @@ async function handlePrivate(env, message) {
     await cancelPendingImages(env,user.id);
     await returnToBotMenu(env, user);
     await clearConversationContext(env,user.id);
-    await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
+    await sendUser(env, user.id, copy.welcome);
     // /start is visible to the next AI turn without being another chat message.
     await saveConversationExchange(env,user.id,"/start",
-      "HSK AI support menu displayed: payment, account, technical issue, operator.");
+      "HSK AI Support chat started. User may describe an issue or send a screenshot.");
     return;
   }
   if (message.text === "/help") {
@@ -634,6 +634,33 @@ async function registerWebhookOnce(env, verify = false) {
   return { status };
 }
 
+// Remove legacy global/private command lists once. Telegram may still
+// render a native Menu icon; clients decide the final appearance.
+async function removeLegacyBotMenusOnce(env) {
+  const key="support_commands_hidden_v1";
+  try {
+    const previous=await env.DB.prepare(
+      "SELECT value FROM service_settings WHERE key='"+key+"'"
+    ).first();
+    if(previous?.value==="1")return;
+    for(const scope of [{type:"default"},{type:"all_private_chats"}]) {
+      for(const language_code of [null,"ru","tg","uz"]) {
+        await telegram(env,"deleteMyCommands",{
+          scope,...(language_code?{language_code}:{})
+        },3000);
+      }
+    }
+    await telegram(env,"setChatMenuButton",{menu_button:{type:"default"}},3000);
+    const now=Math.floor(Date.now()/1000);
+    await env.DB.prepare(
+      "INSERT INTO service_settings(key,value,updated_at) VALUES('"+key+"','1',?) "+
+      "ON CONFLICT(key) DO UPDATE SET value='1',updated_at=excluded.updated_at"
+    ).bind(now).run();
+  }catch(error) {
+    console.warn("support_command_menu_cleanup_failed",error?.name||"Error");
+  }
+}
+
 async function handleGroupChatId(env, message) {
   if (!message?.from || message.from.is_bot) return;
   if (!["group", "supergroup"].includes(message.chat?.type)) return;
@@ -731,6 +758,7 @@ export default {
   async scheduled(controller, env) {
     if (controller.cron === "*/5 * * * *") {
       await registerWebhookOnce(env);
+      await removeLegacyBotMenusOnce(env);
       // Context must expire close to the one-hour TTL; daily prune is too late.
       try {
         await env.DB.prepare("DELETE FROM ai_conversation WHERE created_at < ?")
