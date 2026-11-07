@@ -1178,7 +1178,7 @@ test("explicit /operator upgrades an auto report into human-chat mode",async()=>
   }finally{globalThis.fetch=old;}
 });
 
-test("uncertain screenshot privacy never forwards raw image",async()=>{
+test("actionable screenshot report is forwarded to private specialists even without AI share flag",async()=>{
   const {env}=stub();
   let imageProvided=false;
   env.AI={run:async(model,request)=>{
@@ -1204,10 +1204,11 @@ test("uncertain screenshot privacy never forwards raw image",async()=>{
     assert.equal((await call(env,update)).status,200);
     assert.equal(imageProvided,true);
     const admin=calls.filter(x=>String(x.data.chat_id)==="-100234");
-    assert.equal(admin.length,1);
-    assert.equal(admin[0].method,"sendMessage");
-    assert.ok(admin[0].data.text.includes("not attached (privacy review)"));
-    assert.equal(calls.filter(x=>x.method==="copyMessage").length,0);
+    assert.equal(admin.length,2);
+    assert.deepEqual(admin.map(x=>x.method),["sendMessage","copyMessage"]);
+    assert.equal(admin[1].data.message_id,9333);
+    assert.ok(admin[0].data.text.includes("Screenshot follows this report"));
+    assert.equal(calls.filter(x=>x.method==="copyMessage").length,1);
   }finally{globalThis.fetch=old;}
 });
 
@@ -1651,4 +1652,60 @@ test("bug report success confirms specialist review in three languages without f
     assert.ok(COPY[lang].reportSent,"other feedback remains separate from error notice");
     assert.ok(COPY[lang].reportFailed,"failed notification remains distinguishable");
   }
+});
+
+
+test("actual Lava checkout screenshot with email + error explanation is forwarded despite AI classifying it as answer",async()=>{
+  const f=imageFollowUpFixture(),old=globalThis.fetch;
+  f.env.AI.run=async(_model,req)=>{
+    assert.ok(req.messages.at(-1).content.some(p=>p.type==="image_url"));
+    assert.ok(req.messages.at(-1).content[0].text.includes("хатолик"));
+    return {response:JSON.stringify({action:"answer",
+      answer:"Тўлов хизмати жавоб бермаган. Кейинроқ яна синашингиз мумкин."})};
+  };
+  globalThis.fetch=f.stubFetch;
+  try{
+    await call(f.env,f.photo(509001));
+    await call(f.env,f.textMsg(509002,"обуна олишда манабунака хатолик чкаяпти"));
+    const operator=f.telegramCalls.filter(x=>x.body.chat_id==="-100234");
+    assert.deepEqual(operator.map(x=>x.method),["sendMessage","copyMessage"]);
+    assert.equal(operator[1].body.from_chat_id,83001);
+    assert.equal(operator[1].body.message_id,509001);
+    assert.ok(operator[0].body.text.includes("обуна олишда"));
+    const response=f.telegramCalls.find(x=>x.method==="sendMessage"&&x.body.chat_id===83001);
+    assert.ok(response.body.text.includes("Хатолик ҳақида мутахассисларга хабар бердим"));
+    assert.ok(response.body.text.includes("Кейинроқ яна синашингиз"));
+    assert.equal(f.records.size,0);
+    const queued=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(queued,f.env);
+    assert.equal(queued.messages[0].acknowledged,true);
+    assert.equal(f.telegramCalls.filter(x=>x.method==="copyMessage").length,1);
+  }finally{globalThis.fetch=old;}
+});
+
+test("model's negative image-sharing flag does not suppress a genuine product error report screenshot",async()=>{
+ const f=imageFollowUpFixture(),old=globalThis.fetch;
+ f.env.AI.run=async()=>({response:JSON.stringify({action:"report",kind:"bug",
+   answer:"Похоже на ошибку платежной страницы.",
+   summary:"Платежная страница сервиса показывает ошибку при оформлении подписки.",
+   image_safe_to_share:false})});
+ globalThis.fetch=f.stubFetch;
+ try{
+   await call(f.env,f.photo(509101,83001,"Ошибка при оформлении подписки на платежной странице"));
+   assert.deepEqual(f.telegramCalls.filter(x=>x.body.chat_id==="-100234").map(x=>x.method),
+      ["sendMessage","copyMessage"]);
+   assert.equal(f.telegramCalls.filter(x=>x.method==="copyMessage")[0].body.message_id,509101);
+ }finally{globalThis.fetch=old;}
+});
+
+test("ordinary question with a screenshot is answered without creating an unsolicited specialist report",async()=>{
+ const f=imageFollowUpFixture(),old=globalThis.fetch;
+ f.env.AI.run=async()=>({response:JSON.stringify({action:"answer",
+   answer:"Раздел уроков доступен в главном меню HSK AI."})});
+ globalThis.fetch=f.stubFetch;
+ try{
+   await call(f.env,f.photo(509201,83001,"Где находится раздел уроков HSK AI?"));
+   assert.equal(f.telegramCalls.filter(x=>x.body.chat_id==="-100234").length,0);
+   assert.equal(f.telegramCalls.filter(x=>x.method==="copyMessage").length,0);
+ }finally{globalThis.fetch=old;}
 });
