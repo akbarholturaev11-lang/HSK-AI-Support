@@ -76,7 +76,7 @@ export function parseAiDecision(content) {
     // Gemma 4 sometimes responds with normal helpful prose despite JSON instructions.
     // Only treat plain text as an answer; NEVER auto-escalate from unstructured prose.
     if (raw.startsWith("{") || raw.startsWith("[") || raw.length<12 || raw.length>450 ||
-        /(?:я\\s+вс[её]\\s+исправил|ошибк.{0,30}исправлен|баг\\s+(?:исправлен|устранен)|bug fixed)/iu.test(raw))
+        /(?:я\s+вс[её]\s+исправил|ошибк.{0,30}исправлен|баг\s+(?:исправлен|устранен)|bug fixed)/iu.test(raw))
       return null;
     return {action:"answer",answer:raw};
   }
