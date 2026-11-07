@@ -87,3 +87,9 @@ test("AI report JSON validates classification and factual summary",()=>{
   assert.equal(parseAiDecision(JSON.stringify({...x,answer:"ok"})),null);
   assert.equal(parseAiDecision(JSON.stringify({...x,summary:"x".repeat(241)})),null);
 });
+
+test("Gemma sometimes omits action only for ordinary answers; missing report action is rejected",()=>{
+  assert.deepEqual(parseAiDecision(JSON.stringify({answer:"Откройте вкладку Курсы."})),{action:"answer",answer:"Откройте вкладку Курсы."});
+  assert.equal(parseAiDecision(JSON.stringify({kind:"bug",answer:"Похоже на сбой.",summary:"Приложение неожиданно закрывается."})),null);
+  assert.equal(parseAiDecision(JSON.stringify({kind:"feedback",answer:"Кнопку можно увеличить."})),null);
+});
