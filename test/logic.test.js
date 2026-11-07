@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, parseAiDecision, isUiFeedback } from "../src/logic.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, parseAiDecision, isUiFeedback, isExplicitScreenshotError } from "../src/logic.js";
 import { explicitFaq, menu } from "../src/content.js";
 
 test("Deep links select language and source, reject unexpected values", () => {
@@ -111,4 +111,12 @@ test("malformed but explicit model handoff is a safe non-action, never an automa
   assert.equal(parseAiDecision('{"handoff":"", "answer":"Do this."}'),null);
   assert.equal(parseAiDecision('{"report":{"kind":"bug","summary":"Some issue"}}'),null);
   assert.equal(parseAiDecision('{"action":"answer","answer":"x"}'),null);
+});
+
+test("explicit screenshot error detector identifies reported faults without creating reports from general questions",()=>{
+ assert.equal(isExplicitScreenshotError("обуна олишда манабунака хатолик чкаяпти"),true);
+ assert.equal(isExplicitScreenshotError("После урока показана ошибка платежного сервиса"),true);
+ assert.equal(isExplicitScreenshotError("Менга тўловда хатолик чиқаяпти"),true);
+ assert.equal(isExplicitScreenshotError("Где находится раздел Pro?"),false);
+ assert.equal(isExplicitScreenshotError("Что значит ошибка платежного сервиса?"),false);
 });
