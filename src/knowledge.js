@@ -88,13 +88,12 @@ export function selectContextualKnowledgeTopics(input, history = []) {
   const previous=history.filter(x=>x.role==="user")
     .slice(-6).map(x=>String(x.content||"").toLowerCase().normalize("NFKC")).reverse();
   const past=previous.flatMap(text=>selectKnowledgeTopics(text)).filter((v,i,a)=>a.indexOf(v)===i);
-  const context=[current,...previous].join(" ");
   // Evidence-only image messages have no useful topic keywords of their own.
   // The actual user question, not the generic Vision filename, sets the KB focus.
   const screenshotOnly=/^(?:hsk ai screenshot|screenshot|скриншот|сурат|расм)$/u.test(current);
   const followUp=screenshotOnly || (!direct.length && current.length<90) ||
     /^(?:лекин|аммо|но|но вот|но у меня|бироқ|барибир|ҳали|хали|вапше|вапще|барибир)/u.test(current);
-  const proPattern=/\bpro\b|\bpro\s+olish\b|про\b|подпис|обуна|обун|тариф|лимит|purchase|subscription/u;
+  const proPattern=/\bpro\b|\bpro\s+olish\b|про(?![\p{L}])|подпис|обуна|обун|тариф|лимит|purchase|subscription/u;
   const playPattern=/google\s*play|play\s*market|плей\s*маркет|плеймаркет|гугл\s*плей|android|андроид/u;
   const purchasePattern=/сотиб\s*ол|покуп|купить|олиш|оплат|тўлов|тулов|пардохт|платеж|payment|checkout|топа\s*ол|кўринма|куринма|йўқ|ёк|нет|куда|қаер|каер/u;
   const proRelevant=proPattern.test(current) ||
