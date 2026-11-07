@@ -1,5 +1,7 @@
 # HSK AI Support — Production-Safe Stress Test (2026-11-07)
 
+> Historical stress-test snapshot. Present Support starts as a plain AI chat with no category buttons. See [CURRENT_SUPPORT_FLOW.md](CURRENT_SUPPORT_FLOW.md) for current source-backed behavior and remaining manual E2E checks.
+
 ## Scope and method
 - Tested Cloudflare Worker configuration and read-only D1 aggregate queries; did not send synthetic messages to real Telegram users or leak secrets.
 - Inspected all seven R2 knowledge topics: accounts, android, general, payments, pwa, subscriptions, telegram (24 validated facts per topic, 168 total).
