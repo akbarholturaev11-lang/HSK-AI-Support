@@ -15,6 +15,7 @@ function promptForSupport(lang,facts,remainingTopics=[]) {
     "Read the recent dialogue, including /start and the selected FAQ topic. Answer the CURRENT question, not a previous topic.",
     ...languageGuide(lang),
     "The verified product facts below are your only source. Use relevant facts; never invent a feature, link, price or payment status.",
+    "When the user asks how to do something, use verified facts to identify a supported way to accomplish the goal, not merely explain why the attempted way is unavailable. Do not declare a feature absent unless the facts explicitly rule it out.",
     "If the evidence from the loaded knowledge files is insufficient to answer the specific question, choose action search_more rather than guessing or prematurely handing off.",
     "Search only the listed remaining knowledge topics; optionally request the most relevant topic names in a topics array. If no topics remain and the facts do not answer, choose handoff.",
     "Available unread knowledge topics (names only, not facts): "+(remainingTopics.join(", ")||"none"),
@@ -76,7 +77,8 @@ async function primaryProvider(env, messages, imageDataUrl) {
     return env.AI.run(env.AI_MODEL || PRIMARY_MODEL, {
       messages,
       max_tokens:imageDataUrl ? 540 : 450,
-      temperature:0.4,
+      temperature:0.2,
+      response_format:{type:"json_object"},
       chat_template_kwargs:{enable_thinking:false}
     });
   }
@@ -86,7 +88,7 @@ async function primaryProvider(env, messages, imageDataUrl) {
   const response=await fetch(endpoint,{
     method:"POST",
     headers:{"content-type":"application/json",authorization:"Bearer "+env.AI_API_KEY},
-    body:JSON.stringify({model:env.AI_MODEL,messages,max_tokens:imageDataUrl ? 540 : 450,temperature:0.4}),
+    body:JSON.stringify({model:env.AI_MODEL,messages,max_tokens:imageDataUrl ? 540 : 450,temperature:0.2,response_format:{type:"json_object"}}),
     signal:AbortSignal.timeout(6500)
   });
   if (!response.ok) throw new Error("primary_http_"+response.status);

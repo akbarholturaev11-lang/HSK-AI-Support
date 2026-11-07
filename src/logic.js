@@ -82,6 +82,10 @@ export function parseAiDecision(content) {
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   if (data.action === "handoff") return { action: "handoff" };
+  // Gemma occasionally emits {"handoff":"reason"} instead of the required
+  // action field. Recover only the safe handoff classification, never a report.
+  if (data.action===undefined && Object.keys(data).length===1 &&
+      typeof data.handoff==="string" && data.handoff.trim()) return {action:"handoff"};
   if (data.action === "search_more") {
     const topics=Array.isArray(data.topics) ?
       [...new Set(data.topics.filter(x=>typeof x==="string"&&/^[a-z][a-z0-9_-]{0,63}$/.test(x)))].slice(0,4) : [];
@@ -92,7 +96,7 @@ export function parseAiDecision(content) {
   const action=data.action===undefined ?
     (typeof data.answer==="string" && ["bug","feedback"].includes(data.kind) &&
      typeof data.summary==="string" ? "report" :
-     (typeof data.answer==="string" && !("kind" in data) && !("summary" in data) ? "answer" : null))
+     (typeof data.answer==="string" && !("kind" in data) && !("summary" in data) && !("handoff" in data) ? "answer" : null))
     : data.action;
   if (action !== "answer" && action !== "report") return null;
   if (typeof data.answer !== "string") return null;

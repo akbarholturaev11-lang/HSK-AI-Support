@@ -105,3 +105,10 @@ test("AI image share flag must be a boolean and is never inferred when absent",(
   assert.equal(parseAiDecision(JSON.stringify({...base,image_safe_to_share:"yes"})),null);
   assert.deepEqual(parseAiDecision(JSON.stringify(base)),base);
 });
+
+test("malformed but explicit model handoff is a safe non-action, never an automatic report",()=>{
+  assert.deepEqual(parseAiDecision('{"handoff":"Оператор должен проверить личный платёж."}'),{action:"handoff"});
+  assert.equal(parseAiDecision('{"handoff":"", "answer":"Do this."}'),null);
+  assert.equal(parseAiDecision('{"report":{"kind":"bug","summary":"Some issue"}}'),null);
+  assert.equal(parseAiDecision('{"action":"answer","answer":"x"}'),null);
+});
