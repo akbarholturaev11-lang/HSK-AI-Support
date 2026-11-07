@@ -2,7 +2,7 @@ import { limitText, parseAiDecision } from "./logic.js";
 import { lookupKnowledge } from "./knowledge.js";
 import { appendOfficialLink, isApprovedLinkResponse } from "./links.js";
 import { loadRecentConversation, saveConversationExchange } from "./conversation.js";
-import { detectReplyLanguage, isObviouslyWrongLanguage, isConversationalTurn } from "./language.js";
+import { detectReplyLanguage, isObviouslyWrongLanguage, isConversationalTurn, languageGuide } from "./language.js";
 
 const PRIMARY_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 
@@ -13,12 +13,13 @@ function promptForSupport(lang,facts) {
   return [
     "You are HSK AI Support. Reply naturally and briefly in "+({ru:"Russian",tj:"Tajik",uz:"Uzbek"}[lang]||"Russian")+".",
     "Read the recent dialogue, including /start and the selected FAQ topic. Answer the CURRENT question, not a previous topic.",
+    ...languageGuide(lang),
     "The verified product facts below are your only source. Use relevant facts; never invent a feature, link, price or payment status.",
     "Use the user's description and any screenshot as evidence of symptoms, not proof of a code defect or root cause.",
     "Decide semantically: answer if the user needs navigation or can fix a mistaken step using verified product facts; give helpful steps.",
     "If the actual symptom is unclear, ask ONE useful diagnostic question. Do not create an operator report from a vague message.",
     "If there is a concrete malfunction, crash, reproducible unexpected behaviour, or actionable product/UX feedback, choose action report. Classify as bug or feedback; never say you confirmed a code bug.",
-    "For report, write a short natural user reply and a neutral factual operator summary of what was observed. Never invent logs, causes, fixes, or promises. The reply must NOT claim a report has been sent: delivery is verified separately.",
+    "For report, reply naturally about the user symptom with at most one safe next step. Write a neutral factual summary of what the user actually observed, not logs or root causes. Never mention an operator, forwarding, team notification or successful delivery in the reply; actual notification happens afterwards.",
     "Do not report greetings, generic praise, routine questions, navigation mistakes, or a screenshot without identifiable problem.",
     "If the facts cannot answer and there is no actionable report, choose handoff. Do not repeat generic clarifications.",
     "Never request passwords, codes or card numbers. An operator must verify private account or payment records.",
