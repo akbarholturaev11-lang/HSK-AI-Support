@@ -1454,7 +1454,7 @@ function enablePendingImageTestDb(env){
 }
 
 function imageFollowUpFixture(){
-  const {env}=stub();
+  const {env,conversations}=stub();
   const records=enablePendingImageTestDb(env);
   const queueSent=[],telegramCalls=[];
   let aiCalls=0,queueFails=false;
@@ -1485,7 +1485,7 @@ function imageFollowUpFixture(){
     message_id:id,text
   }});
   const queueBatch=message=>({messages:[{body:message,ack(){this.acknowledged=true;},retry(opts){this.retried=opts;}}]});
-  return {env,records,queueSent,telegramCalls,stubFetch,photo,textMsg,queueBatch,
+  return {env,records,queueSent,telegramCalls,conversations,stubFetch,photo,textMsg,queueBatch,
     getAiCalls:()=>aiCalls,setQueueFails(v){queueFails=v;}};
 }
 
@@ -1708,4 +1708,105 @@ test("ordinary question with a screenshot is answered without creating an unsoli
    assert.equal(f.telegramCalls.filter(x=>x.body.chat_id==="-100234").length,0);
    assert.equal(f.telegramCalls.filter(x=>x.method==="copyMessage").length,0);
  }finally{globalThis.fetch=old;}
+});
+
+
+test("real Lava screenshot report is remembered: 'Ҳолиям тузалмади' continues prior problem, not unknown KB fallback",async()=>{
+ const f=imageFollowUpFixture(),previous=globalThis.fetch;
+ let turns=0;
+ f.env.AI.run=async(_model,request)=>{
+   turns++;
+   if(turns===1){
+     assert.ok(request.messages.at(-1).content.some(x=>x.type==="image_url"));
+     return {response:JSON.stringify({action:"report",kind:"bug",
+       summary:"Lava обуна тўлов хизматидан жавоб келмаяпти, checkout хатоси кўринди.",
+       answer:"Тўлов саҳифаси ҳозир жавоб бермаяпти. Кейинроқ қайта синаш мумкин.",
+       image_safe_to_share:false})};
+   }
+   const history=request.messages.filter(x=>x.role==="user"||x.role==="assistant").slice(0,-1);
+   assert.ok(history.some(x=>x.role==="user"&&String(x.content).includes("Lava обуна")),
+      "screenshot report summary must be present in subsequent model history");
+   assert.ok(history.some(x=>x.role==="assistant"&&String(x.content).includes("мутахассисларга хабар бердим")),
+      "actual successful specialist acknowledgment must be present in history");
+   assert.equal(request.messages.at(-1).content,"Ҳолиям тузалмади");
+   return {response:JSON.stringify({action:"answer",
+     answer:"Тўлов хизматидаги аввалги муаммо давом этаётган экан. Мутахассисларга хабар берилган. Тўловни қайта-қайта тасдиқлашдан олдин ҳолатни текшириш мумкин."})};
+ };
+ globalThis.fetch=f.stubFetch;
+ try {
+   await call(f.env,f.photo(581001,83001,"обуна олишда Lava хатолик чкаяпти"));
+   assert.equal(f.conversations.length,2);
+   assert.equal(f.conversations[0].role,"user");
+   assert.ok(f.conversations[0].text.includes("Lava обуна"));
+   assert.equal(f.conversations[1].role,"assistant");
+   await call(f.env,f.textMsg(581002,"Ҳолиям тузалмади"));
+   assert.equal(turns,2,"follow-up requires only one additional model call");
+   assert.equal(f.conversations.length,4);
+   const texts=f.telegramCalls.filter(x=>x.method==="sendMessage"&&x.body.chat_id===83001).map(x=>x.body.text);
+   assert.equal(texts.length,2);
+   assert.ok(texts.at(-1).includes("аввалги муаммо давом"));
+   assert.ok(!texts.at(-1).includes("Билимлар базамда"));
+   assert.equal(f.telegramCalls.filter(x=>x.method==="copyMessage").length,1,
+     "follow-up should not forward the same image a second time");
+ }finally{globalThis.fetch=previous;}
+});
+
+test("image with ordinary answer is also remembered for follow-up without saving screenshot bytes or email",async()=>{
+ const f=imageFollowUpFixture(),previous=globalThis.fetch;
+ let turns=0;
+ f.env.AI.run=async(_model,request)=>{
+   turns++;
+   if(turns===1)return {response:JSON.stringify({action:"answer",
+     answer:"Бу HSK AI обуна ойнаси. Тўловга ўтиш тугмасини кўриб турибман."})};
+   const previousMessages=request.messages.filter(x=>x.role==="user"||x.role==="assistant").slice(0,-1);
+   assert.ok(previousMessages.some(x=>String(x.content).includes("обуна ойнаси")),
+      "photo response should become context for next turn");
+   return {response:JSON.stringify({action:"answer",
+      answer:"Ҳа, аввалги расмдаги обуна ойнаси ҳақида гапиряпсиз."})};
+ };
+ globalThis.fetch=f.stubFetch;
+ try{
+   await call(f.env,f.photo(582001,83001,"Бу обуна ойнасида email customer@example.com бор"));
+   assert.equal(f.conversations.length,2);
+   assert.ok(f.conversations[0].text.includes("[email]"));
+   assert.ok(!f.conversations[0].text.includes("customer@example.com"));
+   assert.ok(!JSON.stringify(f.conversations).includes("stored-photo-"));
+   await call(f.env,f.textMsg(582002,"Бу ерда нима қилишим керак?"));
+   assert.equal(turns,2);
+   assert.equal(f.conversations.length,4);
+ }finally{globalThis.fetch=previous;}
+});
+
+test("bare photo then text report is saved once; delayed queue cannot double-save history",async()=>{
+ const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+ f.env.AI.run=async()=>({response:JSON.stringify({action:"report",kind:"bug",
+   answer:"Тўлов хизмати вақтинча жавоб бермаяпти.",
+   summary:"Lava checkout хатолиги обуна тўлов саҳифасида юз берди."})});
+ globalThis.fetch=f.stubFetch;
+ try{
+   await call(f.env,f.photo(583001));
+   assert.equal(f.conversations.length,0);
+   await call(f.env,f.textMsg(583002,"обуна олишда манабунака хатолик чкаяпти"));
+   assert.equal(f.conversations.length,2);
+   assert.ok(f.conversations[0].text.includes("Lava checkout"));
+   const q=f.queueBatch(f.queueSent[0].body);
+   await worker.queue(q,f.env);
+   assert.equal(q.messages[0].acknowledged,true);
+   assert.equal(f.conversations.length,2);
+ }finally{globalThis.fetch=oldFetch;}
+});
+
+test("start resets recently saved image-report context",async()=>{
+ const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+ f.env.AI.run=async()=>({response:JSON.stringify({action:"report",kind:"bug",
+   answer:"Checkout error кўринмоқда.",summary:"Lava Pro тўловда хатолик бор."})});
+ globalThis.fetch=f.stubFetch;
+ try{
+   await call(f.env,f.photo(584001,83001,"обуна олишда хатолик бор"));
+   assert.equal(f.conversations.length,2);
+   await call(f.env,f.textMsg(584002,"/start"));
+   assert.equal(f.conversations.length,2);
+   assert.equal(f.conversations[0].text,"/start");
+   assert.ok(f.conversations.every(x=>!x.text.includes("Lava Pro")));
+ }finally{globalThis.fetch=oldFetch;}
 });
