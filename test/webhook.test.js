@@ -181,7 +181,8 @@ test("AI shows typing before model call and sends a brief answer", async () => {
       assert.equal(body.max_tokens, 450);
       assert.deepEqual(body.response_format,{type:"json_object"});
       assert.equal(body.temperature,0.2);
-      assert.match(body.messages[0].content, /Read the recent dialogue/);
+      assert.match(body.messages[0].content, /plain chat without category buttons/);
+       assert.doesNotMatch(body.messages[0].content, /the selected FAQ topic/);
       return Response.json({ choices: [{ message: { content: JSON.stringify({
         action: "answer",
         answer: "HSK AI помогает изучать китайский язык."
