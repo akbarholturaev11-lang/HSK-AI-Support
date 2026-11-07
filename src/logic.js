@@ -96,7 +96,7 @@ export function parseAiDecision(content) {
   const action=data.action===undefined ?
     (typeof data.answer==="string" && ["bug","feedback"].includes(data.kind) &&
      typeof data.summary==="string" ? "report" :
-     (typeof data.answer==="string" && !("kind" in data) && !("summary" in data) ? "answer" : null))
+     (typeof data.answer==="string" && !("kind" in data) && !("summary" in data) && !("handoff" in data) ? "answer" : null))
     : data.action;
   if (action !== "answer" && action !== "report") return null;
   if (typeof data.answer !== "string") return null;
