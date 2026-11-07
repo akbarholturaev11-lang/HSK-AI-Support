@@ -172,8 +172,10 @@ async function forwardAiReport(env, user, ctx, report, message) {
   if (!summary || shouldAvoidAi(report.summary)) return false;
   const original=sanitizeConversationText(message.text || message.caption || "");
   if(shouldAvoidAi(message.caption||"") || requiresHumanVerification(message.caption||"")) return false;
-  // Bound automatic traffic; user can always ask for an explicit operator.
-  if (!await claimQuota(env,"ai-report:"+user.id,3)) return false;
+  // Every genuine AI-classified report can reach the operator. A per-user
+  // 3/day quota previously consumed slots even when delivery failed, causing
+  // legitimate crash/UX reports to be silently rejected during E2E testing.
+  // Telegram webhook update-id deduplication still blocks delivery retries.
   const ticket=await openTicket(env,user.id,{...ctx,source:"ai_report"});
   if(ticket.source!=="ai_report") return false;
   const username=/^[A-Za-z0-9_]{3,32}$/.test(String(user.username||"")) ? user.username : null;
@@ -188,10 +190,12 @@ async function forwardAiReport(env, user, ctx, report, message) {
     (isImage ? (report.image_safe_to_share===true ?
       "\n📷 Screenshot attached below when Telegram delivery succeeds." :
       "\n📷 Screenshot not attached (privacy review).") : "");
+  let stage="operator_send";
   try {
     const sent=await telegram(env,"sendMessage",{
       chat_id:env.ADMIN_CHAT_ID,text:header,parse_mode:"HTML",link_preview_options:{is_disabled:true}
     });
+    stage="operator_reply_link";
     await saveAdminLink(env,sent.message_id,ticket.id);
     let imageSent=!isImage;
     // Only copy the exact photo analyzed by the AI, and only after positive
@@ -208,10 +212,16 @@ async function forwardAiReport(env, user, ctx, report, message) {
         console.warn("support_ai_screenshot_forward_failed");
       }
     }
+    stage="ticket_update";
     await env.DB.prepare("UPDATE tickets SET updated_at=? WHERE id=?")
       .bind(Math.floor(Date.now()/1000),ticket.id).run();
     return {sent:true,imageSent};
-  } catch {
+  } catch (error) {
+    // Log the failed delivery stage and safe error code, never the user
+    // message, token, chat ID or private payload.
+    const code=String(error?.message||"");
+    const safeCode=/^telegram_(?:http_\d{3}|rejected_[A-Za-z]+)$/.test(code) ? code : "internal_error";
+    console.warn("support_ai_report_delivery_failed",stage,safeCode);
     // A fresh empty auto-ticket should not block the next legitimate report.
     if(ticket.isNew) {
       try {
@@ -219,7 +229,6 @@ async function forwardAiReport(env, user, ctx, report, message) {
           .bind(Math.floor(Date.now()/1000),ticket.id).run();
       } catch {}
     }
-    console.warn("support_ai_report_delivery_failed");
     return false;
   }
 }
