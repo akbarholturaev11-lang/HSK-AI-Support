@@ -8,7 +8,8 @@ export const OFFICIAL_LINKS=Object.freeze({
   terms:"https://hskai.app/terms",
   accountDeletion:"https://hskai.app/account-deletion",
   telegram:"https://t.me/darsi_chini_bot",
-  telegramNews:"https://t.me/aibotsakbar",
+  telegramNews:"https://t.me/hskaiapp",
+  support:"https://t.me/hskai_support_bot",
   instagram:"https://www.instagram.com/hskai.app",
   instagramTj:"https://www.instagram.com/hskai.apptj/",
   tiktok:"https://www.tiktok.com/@hskai.app",
@@ -61,10 +62,14 @@ export function chooseOfficialLink(input,answer,lang="ru",history=[]) {
   const wantsLink=linkRequest.test(q);
   const isIphone=iphone.test(q);
   const wasIphone=iphone.test(previous);
-  const isTg=/(?:telegram|телеграм|t\.me|@darsi_chini_bot|@aibotsakbar)/u.test(q);
-  const wasTg=/(?:telegram|телеграм|@aibotsakbar|@darsi_chini_bot)/u.test(previous);
-  const isNews=/(?:канал|channel|новост|янгил|хабар|ахбор|@aibotsakbar)/u.test(q);
+  const isTg=/(?:telegram|телеграм|t\.me|@darsi_chini_bot|@hskaiapp)/u.test(q);
+  const wasTg=/(?:telegram|телеграм|@hskaiapp|@darsi_chini_bot)/u.test(previous);
+  const isNews=/(?:канал|channel|новост|янгил|хабар|ахбор|@hskaiapp)/u.test(q);
 
+  // Support and education bots are different official accounts.
+  if (/(?:поддержк|support|ёрдам|ѐрдам|ёрӣ|оператор|қўллаб.қувват|қуллаб.қувват)/u.test(q) &&
+      (wantsLink || /(?:бот|bot|telegram|телеграм|контакт|ссылка|силк|ҳавола|хавола)/u.test(q)))
+    return OFFICIAL_LINKS.support;
   if (/instagram|инстаграм|инста\b/u.test(q))
     return preferTajik(q,lang)?OFFICIAL_LINKS.instagramTj:OFFICIAL_LINKS.instagram;
   if (/tiktok|тикток|тик ток/u.test(q))
