@@ -51,7 +51,7 @@ test("photo caption about visual UI feedback selects general verified facts",asy
   assert.deepEqual(v.topics,["general"]);
 });
 
-test("current question and selected FAQ guide the R2 search; read closest second topic",async()=>{
+test("current question and historical support topic guide R2 search",async()=>{
   const h=[{role:"user",content:"FAQ selected: accounts"},{role:"assistant",content:"Support topic: login"},
     {role:"user",content:"iPhone PWA приложение"}];
   assert.deepEqual(selectContextualKnowledgeTopics("кириш ишламаяпти",h),["accounts","pwa"]);
