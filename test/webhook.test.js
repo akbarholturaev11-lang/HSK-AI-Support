@@ -446,7 +446,7 @@ test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
       message_id:9902,text:"Не могу войти в аккаунт"}};
     assert.equal((await call(env,update)).status,200);
     assert.equal(aiCalls,0);
-    assert.equal(quotas.size,1,"only the user message rate limit is charged, not AI quota");
+    assert.equal(quotas.size,0,"no per-user message or AI quota is charged");
     assert.ok(!calls.some(x=>x.data.chat_id==="-100234"));
     assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id===992&&/\/operator/.test(x.data.text)));
   }finally{globalThis.fetch=orig;}
@@ -829,7 +829,7 @@ test("account menu then Android preserves sign-in context and offers localized o
     assert.match(last.text,/входа|вход/i);
     assert.doesNotMatch(last.text,/скача|загруз/ui);
     assert.equal(last.reply_markup,undefined);
-    assert.equal(quotas.has("ai-user:4500:"+new Date().toISOString().slice(0,10)),true);
+    assert.equal([...quotas.keys()].some(key=>/^(?:ai-user:|ai-global:|msg-user:)/.test(key)),false);
   } finally {globalThis.fetch=previous;}
 });
 
