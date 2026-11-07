@@ -178,7 +178,7 @@ test("AI shows typing before model call and sends a brief answer", async () => {
     if (String(url).includes("api.openai.com")) {
       assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
       const body = JSON.parse(init.body);
-      assert.equal(body.max_tokens, 300);
+      assert.equal(body.max_tokens, 450);
       assert.match(body.messages[0].content, /Read the recent dialogue/);
       return Response.json({ choices: [{ message: { content: JSON.stringify({
         action: "answer",
@@ -1171,5 +1171,38 @@ test("explicit /operator upgrades an auto report into human-chat mode",async()=>
     assert.notEqual([...tickets.values()][0].source,"ai_report");
     await call(env,mk(9202,"Передайте оператору ещё эту деталь"));
     assert.equal(events.filter(e=>e.method==="copyMessage"&&e.data.chat_id==="-100234").length,1);
+  }finally{globalThis.fetch=old;}
+});
+
+test("screenshot triage sends only redacted text summary, not raw image to operator",async()=>{
+  const {env}=stub();
+  let imageProvided=false;
+  env.AI={run:async(model,request)=>{
+    imageProvided=Array.isArray(request.messages.at(-1).content)&&
+      request.messages.at(-1).content.some(p=>p.type==="image_url");
+    return {response:JSON.stringify({
+      action:"report",kind:"bug",answer:"На скриншоте видно сообщение об ошибке. Описание передам для проверки.",
+      summary:"После запуска теста на Android появляется сообщение об ошибке."
+    })};
+  }};
+  const calls=[],old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const name=String(url);
+    if(name.includes("/file/bot"))return new Response(Uint8Array.from([
+      0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),{status:200,headers:{"content-type":"image/png"}});
+    const method=name.split("/").pop();
+    calls.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:method==="getFile"?{file_path:"photos/picture.png"}:{message_id:7000+calls.length}});
+  };
+  try{
+    const update={update_id:9333,message:{chat:{id:3333,type:"private"},from:{id:3333,language_code:"ru"},
+      message_id:9333,caption:"После урока показана ошибка",photo:[{file_id:"safe-photo",file_size:8}]}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(imageProvided,true);
+    const admin=calls.filter(x=>String(x.data.chat_id)==="-100234");
+    assert.equal(admin.length,1);
+    assert.equal(admin[0].method,"sendMessage");
+    assert.ok(admin[0].data.text.includes("image not auto-forwarded"));
+    assert.equal(calls.filter(x=>x.method==="copyMessage").length,0);
   }finally{globalThis.fetch=old;}
 });
