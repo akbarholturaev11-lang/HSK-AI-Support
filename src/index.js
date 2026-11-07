@@ -3,6 +3,8 @@ import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer, AI_NO_FACTS } from "./ai.js";
 import { saveConversationExchange, clearConversationContext, sanitizeConversationText } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
+import { hasHoldableImage, holdImageForCaption, claimImageForText, claimImageFromQueue,
+  restoreTelegramImageMessage, finishPendingImage, releasePendingImage, cancelPendingImages } from "./pending-image.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 const fail = (status) => new Response("unavailable", { status });
@@ -307,45 +309,10 @@ async function returnToBotMenu(env, user) {
   } catch { console.warn("support_operator_exit_notice_failed"); }
 }
 
-async function handlePrivate(env, message) {
-  const user = message.from;
-  if (!user || user.is_bot || message.chat?.id !== user.id) return;
-  const start = parseStartCommand(message.text || "");
-  const ctx = await userContext(env, user, start);
-  // No language picker: infer from each message and persist for short follow-ups.
-  // Deep-link locale is only the fallback for an ambiguous message.
-  if (start === null) {
-    const detected = detectReplyLanguage(ctx.lang, message.text || message.caption || "");
-    if (detected !== ctx.lang) {
-      await updateUser(env, user.id, detected, ctx.source, Math.floor(Date.now()/1000));
-      ctx.lang = detected;
-    }
-  }
-  const copy = COPY[ctx.lang] || COPY.ru;
-  if (start !== null) {
-    await returnToBotMenu(env, user);
-    await clearConversationContext(env,user.id);
-    await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
-    // /start is visible to the next AI turn without being another chat message.
-    await saveConversationExchange(env,user.id,"/start",
-      "HSK AI support menu displayed: payment, account, technical issue, operator.");
-    return;
-  }
-  if (message.text === "/help") {
-    await sendUser(env, user.id, copy.help);
-    return;
-  }
-  if ((message.text || "").trim() === "/operator") {
-    await forwardToOperator(env, user, ctx);
-    return;
-  }
-  const ticket = await activeTicket(env, user.id);
-  if (ticket) {
-    await forwardToOperator(env, user, ctx, message);
-    return;
-  }
-  if (!message.text && (message.photo?.length || message.document)) {
-    const caption=limitText(message.caption || "",1300);
+// Shared Vision pipeline for captioned media, delayed bare media and joined
+// screenshot+text. Operator reports retain the original Telegram image id.
+async function answerAboutImage(env,user,ctx,message,caption) {
+  const copy=COPY[ctx.lang]||COPY.ru;
     // Keep sensitive payment proofs and credential photos within human support.
     // Sensitive receipts and personal account status require human consent;
     // never automatically send these files to the operator.
@@ -379,6 +346,56 @@ async function handlePrivate(env, message) {
     // The photo loaded. AI uncertainty must never be called a broken file.
     await sendUser(env,user.id,isUiFeedback(caption) ? copy.uiFeedbackAck : copy.imageAnalysisUnavailable);
     return;
+}
+
+async function handlePrivate(env, message) {
+  const user = message.from;
+  if (!user || user.is_bot || message.chat?.id !== user.id) return;
+  const start = parseStartCommand(message.text || "");
+  const ctx = await userContext(env, user, start);
+  // No language picker: infer from each message and persist for short follow-ups.
+  // Deep-link locale is only the fallback for an ambiguous message.
+  if (start === null) {
+    const detected = detectReplyLanguage(ctx.lang, message.text || message.caption || "");
+    if (detected !== ctx.lang) {
+      await updateUser(env, user.id, detected, ctx.source, Math.floor(Date.now()/1000));
+      ctx.lang = detected;
+    }
+  }
+  const copy = COPY[ctx.lang] || COPY.ru;
+  if (start !== null) {
+    await cancelPendingImages(env,user.id);
+    await returnToBotMenu(env, user);
+    await clearConversationContext(env,user.id);
+    await sendUser(env, user.id, copy.welcome, menu(ctx.lang));
+    // /start is visible to the next AI turn without being another chat message.
+    await saveConversationExchange(env,user.id,"/start",
+      "HSK AI support menu displayed: payment, account, technical issue, operator.");
+    return;
+  }
+  if (message.text === "/help") {
+    await cancelPendingImages(env,user.id);
+    await sendUser(env, user.id, copy.help);
+    return;
+  }
+  if ((message.text || "").trim() === "/operator") {
+    await cancelPendingImages(env,user.id);
+    await forwardToOperator(env, user, ctx);
+    return;
+  }
+  const ticket = await activeTicket(env, user.id);
+  if (ticket) {
+    await forwardToOperator(env, user, ctx, message);
+    return;
+  }
+  if (!message.text && (message.photo?.length || message.document)) {
+    const caption=limitText(message.caption || "",1300);
+    // Bare screenshots wait for a possible explanation. A photo that already
+    // carries a caption is interpreted immediately, as before.
+    if(!caption && hasHoldableImage(message) &&
+       await holdImageForCaption(env,message,ctx)) return;
+    await answerAboutImage(env,user,ctx,message,caption);
+    return;
   }
   if (!message.text) {
     await sendUser(env,user.id,copy.mediaHelp);
@@ -386,8 +403,25 @@ async function handlePrivate(env, message) {
   }
   const text = limitText(message.text, 1300);
   if (!text) return;
-  if (requiresHumanVerification(text)) {
-    await sendUser(env,user.id,copy.accountCheck);
+  if (requiresHumanVerification(text) || shouldAvoidAi(text)) {
+    // A personal payment, card or credential message cannot be sent to
+    // Vision alongside a screenshot. Cancel only the pending photo(s).
+    await cancelPendingImages(env,user.id);
+    await sendUser(env,user.id,requiresHumanVerification(text)?copy.accountCheck:copy.sensitive);
+    return;
+  }
+  // When an explanation arrives during the 60s window, atomically claim
+  // the most recent bare screenshot. The delayed queue copy becomes a no-op.
+  const pending=env.IMAGE_DELAY_QUEUE ? await claimImageForText(env,user.id) : null;
+  if(pending){
+    const media=restoreTelegramImageMessage(pending,text);
+    try{
+      await answerAboutImage(env,user,ctx,media,text);
+      await finishPendingImage(env,pending);
+    }catch(error){
+      await releasePendingImage(env,pending);
+      throw error;
+    }
     return;
   }
   const faq = explicitFaq(text, ctx.lang);
@@ -400,10 +434,6 @@ async function handlePrivate(env, message) {
       "FAQ selected by user: "+text, "Selected support topic: "+(
         faq===copy.account?"Account and sign-in":faq===copy.payment?"Pro subscription payment":"Technical issue"
       ));
-    return;
-  }
-  if (shouldAvoidAi(text)) {
-    await sendUser(env, user.id, copy.sensitive);
     return;
   }
   const answer = await askAi(env, user.id, ctx.lang, text);
@@ -447,6 +477,7 @@ async function handleCallback(env, callback) {
     return;
   }
   const key = action.slice(5);
+  await cancelPendingImages(env,callback.from.id);
   await clearConversationContext(env,callback.from.id);
   // The FAQ click is context for AI, not a new canned Telegram message.
   const selected={payment:"Pro subscription payment",account:"Account and sign-in",
@@ -623,6 +654,36 @@ export default {
       return fail(503);
     }
   },
+  async queue(batch,env) {
+    for(const item of batch.messages){
+      let row=null;
+      try{
+        const result=await claimImageFromQueue(env,item.body);
+        if(result.status==="missing"||result.status==="invalid"){
+          item.ack();continue;
+        }
+        if(result.status==="early"||result.status==="busy"){
+          item.retry({delaySeconds:result.delaySeconds||20});continue;
+        }
+        row=result.row;
+        const user={id:row.tg_id};
+        const ctx={lang:row.lang,source:row.source};
+        const message=restoreTelegramImageMessage(row);
+        // Explicit human-chat mode must not be overridden by queued AI work.
+        const ticket=await activeTicket(env,row.tg_id);
+        if(ticket)await forwardToOperator(env,user,ctx,message);
+        else await answerAboutImage(env,user,ctx,message,"");
+        await finishPendingImage(env,row);
+        item.ack();
+      }catch(error){
+        if(row){
+          try{await releasePendingImage(env,row);}catch{}
+        }
+        console.warn("support_pending_image_queue_failed",error?.name||"Error");
+        item.retry({delaySeconds:30});
+      }
+    }
+  },
   async scheduled(controller, env) {
     if (controller.cron === "*/5 * * * *") {
       await registerWebhookOnce(env);
@@ -643,6 +704,7 @@ export default {
         env.DB.prepare("DELETE FROM quotas WHERE length(day)=10 AND day < ?").bind(dayKey(Date.now() - 3 * 86400000)),
         env.DB.prepare("DELETE FROM quotas WHERE length(day)=7 AND day < ?").bind(new Date(Date.now() - 62 * 86400000).toISOString().slice(0,7)),
         env.DB.prepare("DELETE FROM ai_conversation WHERE created_at < ?").bind(now - 3600),
+        env.DB.prepare("DELETE FROM pending_images WHERE created_at < ?").bind(now - 86400),
         env.DB.prepare("DELETE FROM tickets WHERE updated_at < ?").bind(now - 90 * 86400),
         env.DB.prepare("DELETE FROM admin_links WHERE ticket_id NOT IN (SELECT id FROM tickets)")
       ]);
