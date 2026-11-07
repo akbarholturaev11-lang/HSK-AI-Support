@@ -904,7 +904,7 @@ test("photo with Russian interface criticism reaches vision instead of file-erro
     assert.equal((await call(env,m)).status,200);
     assert.deepEqual(topics,["knowledge/general.json"]);
     assert.equal(modelCalls.length,1);
-    assert.equal(modelCalls[0].max_tokens,380,"photos get enough output tokens for JSON");
+    assert.equal(modelCalls[0].max_tokens,540,"photos get enough output tokens for JSON");
     assert.ok(modelCalls[0].messages.at(-1).content.some(p=>p.type==="image_url"));
     assert.match(messages.at(-1).text,/экран тарифов/);
     assert.doesNotMatch(messages.at(-1).text,/Не удалось обработать файл/);
