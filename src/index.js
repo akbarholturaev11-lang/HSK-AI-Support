@@ -694,6 +694,14 @@ export default {
       } catch {
         // Schema migration is deployed separately; don't break the webhook cron.
       }
+      // Minimize how long Telegram photo references remain in D1 if delivery
+      // failed repeatedly. Successful work deletes them immediately.
+      try {
+        await env.DB.prepare("DELETE FROM pending_images WHERE created_at < ?")
+          .bind(Math.floor(Date.now()/1000)-900).run();
+      } catch {
+        // Rolling back to pre-migration D1 must not block webhook maintenance.
+      }
       return;
     }
     if (controller.cron === "0 3 * * *") {
