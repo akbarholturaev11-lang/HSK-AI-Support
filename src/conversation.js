@@ -1,7 +1,7 @@
 import { shouldAvoidAi } from "./logic.js";
 
 export const CONTEXT_TTL_SECONDS = 3600;
-export const CONTEXT_MESSAGES = 5;
+export const CONTEXT_MESSAGES = 12;
 
 export function sanitizeConversationText(value) {
   const text = String(value || "").trim();
@@ -19,7 +19,7 @@ export async function loadRecentConversation(env, userId, now = Math.floor(Date.
   if (!env.DB) return [];
   try {
     const rs = await env.DB.prepare(
-      "SELECT role,text FROM ai_conversation WHERE tg_id=? AND created_at >= ? ORDER BY id DESC LIMIT 5"
+      "SELECT role,text FROM ai_conversation WHERE tg_id=? AND created_at >= ? ORDER BY id DESC LIMIT 12"
     ).bind(userId, now - CONTEXT_TTL_SECONDS).all();
     return (rs.results || []).filter(x =>
       (x.role === "user" || x.role === "assistant") && typeof x.text === "string"

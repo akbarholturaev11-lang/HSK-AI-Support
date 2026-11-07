@@ -8,7 +8,7 @@ import {
 
 test("context stores only sanitized short excerpts", () => {
   assert.equal(CONTEXT_TTL_SECONDS,3600);
-  assert.equal(CONTEXT_MESSAGES,5);
+  assert.equal(CONTEXT_MESSAGES,12);
   assert.equal(sanitizeConversationText("Мой CVV 123"),null);
   assert.equal(sanitizeConversationText("Мой пароль не работает"),null);
   assert.equal(sanitizeConversationText("Позвоните +992900000000"),null);
@@ -16,7 +16,7 @@ test("context stores only sanitized short excerpts", () => {
   assert.equal(sanitizeConversationText("У меня проблема: example@site.org"),"У меня проблема: [email]");
 });
 
-test("context returns last five only within one hour and in chronological order", async () => {
+test("context returns up to twelve within one hour and in chronological order", async () => {
   const values = [
     {role:"assistant",text:"b4"}, {role:"user",text:"a4"},
     {role:"assistant",text:"b3"}, {role:"user",text:"a3"},
@@ -29,7 +29,7 @@ test("context returns last five only within one hour and in chronological order"
   }; } }; } } };
   const v=await loadRecentConversation(env,9,5000);
   assert.deepEqual(v.map(x=>x.content),["b2","a3","b3","a4","b4"]);
-  assert.match(sql,/LIMIT 5/);
+  assert.match(sql,/LIMIT 12/);
   assert.deepEqual(args,[9,1400]);
   assert.deepEqual(await loadRecentConversation({},9),[]);
 });

@@ -74,3 +74,35 @@ test("missing first R2 file falls back to nearest valid related file",async()=>{
   assert.deepEqual(r.topics,["pwa"]);
   assert.equal(visited.length,2);
 });
+
+
+test("Pro payment questions load verified Play, subscriptions and PWA facts together",async()=>{
+ const sha="c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073";
+ const texts=[
+  "иловамда лимит тугади деяпти лекин каердан Pro олишим керак билмаяпман",
+  "лекин менда про олиш бўлими йўқ топа олмаяпман",
+  "вапще менга про олиш бўлими ёк"
+ ];
+ const history=[
+  {role:"user",content:"мен андроид ивасини ишлатаман худи ушанда про олиш булими йок"},
+  {role:"assistant",content:"Илова ичидаги бўлимни текширинг"},
+  {role:"user",content:texts[1]},
+  {role:"assistant",content:"Скриншот юборинг"}
+ ];
+ assert.deepEqual(selectContextualKnowledgeTopics(texts[0]),["subscriptions","payments","pwa"]);
+ assert.deepEqual(selectContextualKnowledgeTopics(texts[1],history),["android","subscriptions","pwa"]);
+ assert.deepEqual(selectContextualKnowledgeTopics("HSK AI screenshot",history),["android","subscriptions","pwa"]);
+ assert.deepEqual(selectContextualKnowledgeTopics("Google Play версиясида Pro олиш кўринмаяпти"),["android","subscriptions","pwa"]);
+ const paths=[];
+ const env={KB:{get:async key=>{
+   paths.push(key);
+   const topic=key.slice(10,-5);
+   return {json:async()=>({topic,source_commit:sha,facts:Array.from({length:24},(_,i)=>topic+" fact "+i)})};
+ }}};
+ const result=await lookupKnowledge(env,"HSK AI screenshot",{history});
+ assert.deepEqual(result.topics,["android","subscriptions","pwa"]);
+ assert.equal(paths.length,3);
+ assert.equal(result.facts.length,32);
+ assert.ok(result.facts.some(x=>x.startsWith("pwa fact")));
+ assert.ok(result.facts.some(x=>x.startsWith("android fact")));
+});
