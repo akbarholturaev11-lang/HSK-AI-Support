@@ -74,3 +74,18 @@ test("missing first R2 file falls back to nearest valid related file",async()=>{
   assert.deepEqual(r.topics,["pwa"]);
   assert.equal(visited.length,2);
 });
+
+test("Play Pro purchase questions prioritize Android purchase restriction and subscription facts",()=>{
+  assert.deepEqual(selectKnowledgeTopics("Play Market версиясида Pro олиш қаерда?"),["android","subscriptions"]);
+  assert.deepEqual(selectKnowledgeTopics("Google Play не отображается подписка"),["android","subscriptions"]);
+  assert.deepEqual(selectKnowledgeTopics("В Google Play не вижу кнопку оплаты"),["android","payments"]);
+  assert.deepEqual(selectKnowledgeTopics("Android илова ёпилиб қолди"),["android"]);
+  assert.deepEqual(selectContextualKnowledgeTopics("лекин менда чиқмаяпти",[
+    {role:"user",content:"Мен Google Play версиясини ўрнатдим"},
+    {role:"assistant",content:"HSK AI нимада ёрдам берай?"},
+    {role:"user",content:"Pro обуна олиш тугмаси қани?"}
+  ]),["android","subscriptions"]);
+  assert.deepEqual(selectContextualKnowledgeTopics("APK direct версиясида Pro борми?",[
+    {role:"user",content:"Google Play версиясида лимит тугаган эди"}
+  ]),["subscriptions","android"]);
+});
