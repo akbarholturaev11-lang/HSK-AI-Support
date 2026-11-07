@@ -1810,3 +1810,21 @@ test("start resets recently saved image-report context",async()=>{
    assert.ok(f.conversations.every(x=>!x.text.includes("Lava Pro")));
  }finally{globalThis.fetch=oldFetch;}
 });
+
+
+test("long photo error response retains verified specialist notification inside 350-char memory",async()=>{
+ const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+ const longAnswer="Тўлов хизмати ҳозир жавоб бермаяпти. "+("Текширув учун яна бироз кутинг. ").repeat(10);
+ assert.ok(longAnswer.length>300 && longAnswer.length<450);
+ f.env.AI.run=async()=>({response:JSON.stringify({action:"report",kind:"bug",
+   summary:"Lava checkout муаммоси: Pro тўлов экрани жавоб бермаяпти.",
+   answer:longAnswer})});
+ globalThis.fetch=f.stubFetch;
+ try{
+   await call(f.env,f.photo(585001,83001,"обуна олишда Lava хатолик кўринмоқда"));
+   assert.equal(f.conversations.length,2);
+   assert.match(f.conversations[1].text,/^Хатолик ҳақида мутахассисларга хабар бердим/);
+   assert.ok(f.conversations[1].text.length<=350);
+   assert.equal(f.conversations[0].text.includes("Lava checkout"),true);
+ }finally{globalThis.fetch=oldFetch;}
+});
