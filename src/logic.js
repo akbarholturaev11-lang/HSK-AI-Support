@@ -97,5 +97,10 @@ export function parseAiDecision(content) {
   if (!["bug","feedback"].includes(data.kind) || typeof data.summary !== "string") return null;
   const summary = data.summary.trim();
   if (summary.length < 12 || summary.length > 240) return null;
-  return { action:"report", kind:data.kind, answer, summary };
+  // Only an explicit positive result from Vision authorizes automatically
+  // forwarding a screenshot to an operator. Text-only reports keep undefined.
+  if ("image_safe_to_share" in data && typeof data.image_safe_to_share!=="boolean") return null;
+  return { action:"report", kind:data.kind, answer, summary,
+    ...(typeof data.image_safe_to_share==="boolean" ?
+      {image_safe_to_share:data.image_safe_to_share} : {}) };
 }

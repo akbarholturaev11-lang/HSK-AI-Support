@@ -164,12 +164,14 @@ async function forwardToOperator(env, user, ctx, message = null) {
 
 
 // AI alone decides whether the user described a plausible defect or actionable feedback.
-// Forward only a redacted text summary; never copy payment proofs, private photos or raw screenshots.
+// Send a redacted summary and, when Vision explicitly clears the image, the
+// exact Telegram screenshot. Sensitive/uncertain images are not forwarded.
 async function forwardAiReport(env, user, ctx, report, message) {
   if (!env.ADMIN_CHAT_ID || !["bug","feedback"].includes(report.kind)) return false;
   const summary=sanitizeConversationText(report.summary);
   if (!summary || shouldAvoidAi(report.summary)) return false;
   const original=sanitizeConversationText(message.text || message.caption || "");
+  if(shouldAvoidAi(message.caption||"") || requiresHumanVerification(message.caption||"")) return false;
   // Bound automatic traffic; user can always ask for an explicit operator.
   if (!await claimQuota(env,"ai-report:"+user.id,3)) return false;
   const ticket=await openTicket(env,user.id,{...ctx,source:"ai_report"});
@@ -183,15 +185,32 @@ async function forwardAiReport(env, user, ctx, report, message) {
     "</b></a> · <code>"+escapeHtml(ctx.lang)+"</code> · "+escapeHtml(ctx.source)+
     "\n<code>/close</code>\n\n<blockquote>"+escapeHtml(summary)+"</blockquote>"+
     (original ? "\nUser: "+escapeHtml(original.slice(0,300)) : "")+
-    (isImage ? "\n📷 Screenshot received; image not auto-forwarded for privacy." : "");
+    (isImage ? (report.image_safe_to_share===true ?
+      "\n📷 Screenshot attached below when Telegram delivery succeeds." :
+      "\n📷 Screenshot not attached (privacy review).") : "");
   try {
     const sent=await telegram(env,"sendMessage",{
       chat_id:env.ADMIN_CHAT_ID,text:header,parse_mode:"HTML",link_preview_options:{is_disabled:true}
     });
     await saveAdminLink(env,sent.message_id,ticket.id);
+    let imageSent=!isImage;
+    // Only copy the exact photo analyzed by the AI, and only after positive
+    // AI privacy classification. Never forward screenshots of receipts or IDs.
+    if(isImage && report.image_safe_to_share===true && message.message_id) {
+      try {
+        const copied=await telegram(env,"copyMessage",{
+          chat_id:env.ADMIN_CHAT_ID,from_chat_id:user.id,message_id:message.message_id
+        });
+        await saveAdminLink(env,copied.message_id,ticket.id);
+        imageSent=true;
+      } catch {
+        imageSent=false;
+        console.warn("support_ai_screenshot_forward_failed");
+      }
+    }
     await env.DB.prepare("UPDATE tickets SET updated_at=? WHERE id=?")
       .bind(Math.floor(Date.now()/1000),ticket.id).run();
-    return true;
+    return {sent:true,imageSent};
   } catch {
     // A fresh empty auto-ticket should not block the next legitimate report.
     if(ticket.isNew) {
@@ -206,10 +225,14 @@ async function forwardAiReport(env, user, ctx, report, message) {
 }
 
 async function replyToAiReport(env,user,ctx,message,report) {
-  const sent=await forwardAiReport(env,user,ctx,report,message);
+  const delivery=await forwardAiReport(env,user,ctx,report,message);
   const copy=COPY[ctx.lang]||COPY.ru;
-  // On failed delivery, do not repeat an AI draft that may imply a report was sent.
-  const finalText=sent ? report.answer+"\n"+copy.reportSent : copy.reportFailed;
+  const isImage=Boolean(message.photo?.length||message.document);
+  // Avoid claims of success until Telegram confirms the operator message.
+  const finalText=delivery?.sent ?
+    report.answer+"\n"+copy.reportSent+
+      (isImage && !delivery.imageSent ? "\n"+copy.reportImageNotSent : "") :
+    copy.reportFailed;
   await sendUser(env,user.id,finalText);
   if(!message.photo?.length && !message.document) {
     await saveConversationExchange(env,user.id,message.text||"",finalText);
