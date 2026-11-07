@@ -253,7 +253,13 @@ async function replyToAiReport(env,user,ctx,message,report) {
   const memoryInput=isImage ?
     ("Reported HSK AI "+report.kind+": "+(report.summary||message.caption||"")) :
     (message.text||"");
-  await saveConversationExchange(env,user.id,memoryInput,finalText);
+  // Keep the *verified* delivery result at the START of the saved assistant
+  // turn. Otherwise a 300+ character AI explanation can push the specialist
+  // acknowledgment beyond the existing 350-character memory boundary.
+  const memoryAnswer=isImage && delivery?.sent ?
+    (report.kind==="bug"?copy.bugReportSent:copy.reportSent)+" "+(report.answer||"") :
+    finalText;
+  await saveConversationExchange(env,user.id,memoryInput,memoryAnswer);
 }
 
 async function telegramImage(env, message) {
