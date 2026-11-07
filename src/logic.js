@@ -82,6 +82,11 @@ export function parseAiDecision(content) {
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   if (data.action === "handoff") return { action: "handoff" };
+  if (data.action === "search_more") {
+    const topics=Array.isArray(data.topics) ?
+      [...new Set(data.topics.filter(x=>typeof x==="string"&&/^[a-z][a-z0-9_-]{0,63}$/.test(x)))].slice(0,4) : [];
+    return { action:"search_more", topics };
+  }
   // An absent action is safe to recover only with complete explicit evidence:
   // a known kind + summary + answer means the AI did classify a report.
   const action=data.action===undefined ?

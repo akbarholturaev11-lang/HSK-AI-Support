@@ -1015,7 +1015,7 @@ test("Uzbek guide, iPhone link and resend requests are answered without repetiti
     assert.match(messages[2],/Билимлар базамда/);
     assert.ok(!messages.slice(1).some(m=>/https:\/\/hskai\.app\s*$/m.test(m)),"home URL is not an iPhone app deep-link");
     assert.ok(messages.every(m=>!m.includes("HSK AI ҳақидаги саволингизни аниқроқ ёзинг")));
-    assert.equal(modelCalls,3,"AI sees the conversation and chooses whether information is verified");
+    assert.ok(modelCalls>=3 && modelCalls<=12,"uncertain answers trigger finite verified-file expansion");
     assert.equal(tickets.size,0);
   }finally{globalThis.fetch=orig;}
 });
