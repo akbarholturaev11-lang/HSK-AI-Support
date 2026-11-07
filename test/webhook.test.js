@@ -1357,7 +1357,9 @@ test("automatic bug/feedback delivery has no hidden daily limit, including after
     const replies=sent.filter(x=>x.method==="sendMessage"&&x.payload.chat_id===userId);
     assert.equal(admin.length,7,"each independently classified report reaches operator");
     assert.equal(replies.length,7);
-    assert.ok(replies.every(x=>/операторга етказдим/.test(x.payload.text)));
+    assert.ok(replies.every(x=>/мутахассисларга хабар бердим|операторга етказдим/.test(x.payload.text)),
+      "bugs confirm specialists and feedback keeps its existing delivery confirmation");
+    assert.ok(replies.some(x=>/Хатолик ҳақида мутахассисларга хабар бердим/.test(x.payload.text)));
     assert.equal(quotas.get("ai-report:"+userId+":"+new Date().toISOString().slice(0,10)),3,
       "legacy daily quota is ignored and never incremented");
     assert.equal(tickets.size,1,"reports share a single open operator reply ticket");
@@ -1637,4 +1639,16 @@ test("E2E operator opt-in during screenshot hold forwards the original image and
     assert.equal(q.messages[0].acknowledged,true);
     assert.equal(f.getAiCalls(),0);
   }finally{globalThis.fetch=oldFetch;}
+});
+
+
+test("bug report success confirms specialist review in three languages without forcing any AI answer text",async()=>{
+  const {COPY}=await import("../src/content.js");
+  for(const lang of ["ru","tj","uz"]){
+    assert.ok(COPY[lang].bugReportSent);
+    assert.match(COPY[lang].bugReportSent,/специалист|мутахассис|мутахассислар/i);
+    assert.doesNotMatch(COPY[lang].bugReportSent,/оператор|operator/i);
+    assert.ok(COPY[lang].reportSent,"other feedback remains separate from error notice");
+    assert.ok(COPY[lang].reportFailed,"failed notification remains distinguishable");
+  }
 });
