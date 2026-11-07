@@ -5,6 +5,8 @@ import {chooseOfficialLink,appendOfficialLink,isApprovedLinkResponse,OFFICIAL_LI
 test("verified Android, FAQ and social links are available without a canned reply",()=>{
   assert.equal(chooseOfficialLink("Android APK скачат","", "ru"),OFFICIAL_LINKS.download);
   assert.equal(chooseOfficialLink("Йўриқномани юборинг","", "uz"),"https://hskai.app/uz/guide/faq/");
+  assert.equal(OFFICIAL_LINKS.facebook,"https://facebook.com/1159152280609531");
+  assert.equal(chooseOfficialLink("Facebook HSK AI ссылка",""),OFFICIAL_LINKS.facebook);
   assert.equal(chooseOfficialLink("Instagram HSK AI",""),OFFICIAL_LINKS.instagram);
   assert.equal(chooseOfficialLink("TikTok HSK AI",""),OFFICIAL_LINKS.tiktok);
   assert.equal(chooseOfficialLink("YouTube HSK AI",""),OFFICIAL_LINKS.youtube);
