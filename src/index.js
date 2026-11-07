@@ -241,7 +241,7 @@ async function replyToAiReport(env,user,ctx,message,report) {
   const isImage=Boolean(message.photo?.length||message.document);
   // Avoid claims of success until Telegram confirms the operator message.
   const finalText=delivery?.sent ?
-    report.answer+"\n"+copy.reportSent+
+    report.answer+"\n"+(report.kind==="bug"?copy.bugReportSent:copy.reportSent)+
       (isImage && !delivery.imageSent ? "\n"+copy.reportImageNotSent : "") :
     copy.reportFailed;
   await sendUser(env,user.id,finalText);
