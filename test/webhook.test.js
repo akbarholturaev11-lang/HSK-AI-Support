@@ -179,6 +179,8 @@ test("AI shows typing before model call and sends a brief answer", async () => {
       assert.ok(typingCalls > 0, "Telegram typing indicator must precede AI generation");
       const body = JSON.parse(init.body);
       assert.equal(body.max_tokens, 450);
+      assert.deepEqual(body.response_format,{type:"json_object"});
+      assert.equal(body.temperature,0.2);
       assert.match(body.messages[0].content, /Read the recent dialogue/);
       return Response.json({ choices: [{ message: { content: JSON.stringify({
         action: "answer",
@@ -240,6 +242,8 @@ test("Cloudflare Workers AI binding answers briefly, without external AI API key
     assert.equal(aiCalls.length, 1);
     assert.equal(aiCalls[0].model, "@cf/google/gemma-4-26b-a4b-it");
     assert.deepEqual(aiCalls[0].request.chat_template_kwargs, { enable_thinking: false });
+    assert.deepEqual(aiCalls[0].request.response_format,{type:"json_object"});
+    assert.equal(aiCalls[0].request.temperature,0.2);
     assert.match(aiCalls[0].request.messages[0].content, /Reply naturally and briefly in Russian/);
     assert.ok(calls.some(x => x.method === "sendMessage" && x.body.text === "HSK AI помогает учить китайский язык."));
     assert.equal(calls.filter(x=>x.method==="sendMessage").length, 1);
