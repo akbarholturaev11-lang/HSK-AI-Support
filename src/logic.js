@@ -74,8 +74,13 @@ export function parseAiDecision(content) {
   try { data = JSON.parse(raw); } catch { return null; }
   if (!data || typeof data !== "object") return null;
   if (data.action === "handoff") return { action: "handoff" };
-  if (data.action !== "answer" || typeof data.answer !== "string") return null;
+  if (data.action !== "answer" && data.action !== "report") return null;
+  if (typeof data.answer !== "string") return null;
   const answer = data.answer.trim();
   if (answer.length < 3 || answer.length > 450) return null;
-  return { action: "answer", answer };
+  if (data.action === "answer") return { action: "answer", answer };
+  if (!["bug","feedback"].includes(data.kind) || typeof data.summary !== "string") return null;
+  const summary = data.summary.trim();
+  if (summary.length < 12 || summary.length > 240) return null;
+  return { action:"report", kind:data.kind, answer, summary };
 }
