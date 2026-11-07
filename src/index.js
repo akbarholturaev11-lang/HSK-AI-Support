@@ -1,4 +1,4 @@
-import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback } from "./logic.js";
+import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback, isExplicitScreenshotError } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer, AI_NO_FACTS } from "./ai.js";
 import { saveConversationExchange, clearConversationContext, sanitizeConversationText } from "./conversation.js";
@@ -189,9 +189,7 @@ async function forwardAiReport(env, user, ctx, report, message) {
     "</b></a> · <code>"+escapeHtml(ctx.lang)+"</code> · "+escapeHtml(ctx.source)+
     "\n<code>/close</code>\n\n<blockquote>"+escapeHtml(summary)+"</blockquote>"+
     (original ? "\nUser: "+escapeHtml(original.slice(0,300)) : "")+
-    (isImage ? (report.image_safe_to_share===true ?
-      "\n📷 Screenshot attached below when Telegram delivery succeeds." :
-      "\n📷 Screenshot not attached (privacy review).") : "");
+    (isImage ? "\n📷 Screenshot follows this report when Telegram delivery succeeds." : "");
   let stage="operator_send";
   try {
     const sent=await telegram(env,"sendMessage",{
@@ -200,9 +198,11 @@ async function forwardAiReport(env, user, ctx, report, message) {
     stage="operator_reply_link";
     await saveAdminLink(env,sent.message_id,ticket.id);
     let imageSent=!isImage;
-    // Only copy the exact photo analyzed by the AI, and only after positive
-    // AI privacy classification. Never forward screenshots of receipts or IDs.
-    if(isImage && report.image_safe_to_share===true && message.message_id) {
+    // The screenshot was voluntarily submitted to this support conversation
+    // as evidence of the issue. Copy the ORIGINAL message to the private
+    // specialist group; never rely on the AI's optional privacy boolean.
+    // Credential/payment-proof text is blocked before entering this path.
+    if(isImage && message.message_id) {
       try {
         const copied=await telegram(env,"copyMessage",{
           chat_id:env.ADMIN_CHAT_ID,from_chat_id:user.id,message_id:message.message_id
@@ -240,8 +240,9 @@ async function replyToAiReport(env,user,ctx,message,report) {
   const copy=COPY[ctx.lang]||COPY.ru;
   const isImage=Boolean(message.photo?.length||message.document);
   // Avoid claims of success until Telegram confirms the operator message.
+  const lead=typeof report.answer==="string"&&report.answer.trim()?report.answer.trim()+"\n":"";
   const finalText=delivery?.sent ?
-    report.answer+"\n"+(report.kind==="bug"?copy.bugReportSent:copy.reportSent)+
+    lead+(report.kind==="bug"?copy.bugReportSent:copy.reportSent)+
       (isImage && !delivery.imageSent ? "\n"+copy.reportImageNotSent : "") :
     copy.reportFailed;
   await sendUser(env,user.id,finalText);
@@ -331,12 +332,24 @@ async function answerAboutImage(env,user,ctx,message,caption) {
       return;
     }
     const answer=await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image);
-    if(answer===AI_NO_FACTS) {
-      await sendUser(env,user.id,isUiFeedback(caption)?copy.uiFeedbackAck:copy.noKnowledge);
-      return;
-    }
     if(answer?.action==="report") {
       await replyToAiReport(env,user,ctx,message,answer);
+      return;
+    }
+    if(isExplicitScreenshotError(caption)) {
+      // Don't let a model's "answer" classification hide a clearly described
+      // product failure from specialists. Use its natural advice if available.
+      const summary=sanitizeConversationText(caption).slice(0,220);
+      if(summary.length>=12 && !shouldAvoidAi(summary)){
+        await replyToAiReport(env,user,ctx,message,{
+          action:"report",kind:"bug",summary,
+          answer:typeof answer==="string"?answer:""
+        });
+        return;
+      }
+    }
+    if(answer===AI_NO_FACTS) {
+      await sendUser(env,user.id,isUiFeedback(caption)?copy.uiFeedbackAck:copy.noKnowledge);
       return;
     }
     if(typeof answer==="string" && answer) {
