@@ -90,6 +90,10 @@ test("AI report JSON validates classification and factual summary",()=>{
 
 test("Gemma sometimes omits action only for ordinary answers; missing report action is rejected",()=>{
   assert.deepEqual(parseAiDecision(JSON.stringify({answer:"Откройте вкладку Курсы."})),{action:"answer",answer:"Откройте вкладку Курсы."});
-  assert.equal(parseAiDecision(JSON.stringify({kind:"bug",answer:"Похоже на сбой.",summary:"Приложение неожиданно закрывается."})),null);
+  assert.deepEqual(parseAiDecision(JSON.stringify({kind:"bug",answer:"Похоже на сбой.",summary:"Приложение неожиданно закрывается."})),
+    {action:"report",kind:"bug",answer:"Похоже на сбой.",summary:"Приложение неожиданно закрывается."});
   assert.equal(parseAiDecision(JSON.stringify({kind:"feedback",answer:"Кнопку можно увеличить."})),null);
+  assert.deepEqual(parseAiDecision("Раздел уроков находится в приложении HSK AI."),
+    {action:"answer",answer:"Раздел уроков находится в приложении HSK AI."});
+  assert.equal(parseAiDecision("Баг исправлен"),null);
 });
