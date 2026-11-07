@@ -720,7 +720,7 @@ test("repeated unknown messages never auto-open tickets; only /operator opens on
   }finally{globalThis.fetch=original;}
 });
 
-test("/start returns from open operator ticket to AI and restores one menu",async()=>{
+test("/start returns from operator mode to plain AI chat without buttons",async()=>{
   const {env,tickets}=stub();
   env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"HSK AI помогает изучать китайский язык."})})};
   const calls=[];
@@ -813,7 +813,7 @@ test("AI outage keeps Uzbek greeting natural without a product-KB fallback loop"
 test("account menu then Android preserves sign-in context and offers localized official FAQ",async()=>{
   const {env,conversations,quotas}=stub();
   let modelCalls=0;
-  env.AI={run:async(_model,request)=>{modelCalls++;assert.ok(request.messages.some(m=>String(m.content).includes("FAQ selected: account")));return {response:JSON.stringify({action:"answer",answer:"Проверьте способ входа на Android: Google или Telegram?"})}}};
+  env.AI={run:async(_model,request)=>{modelCalls++;assert.ok(request.messages.some(m=>String(m.content).includes("Legacy FAQ button selected: account")));return {response:JSON.stringify({action:"answer",answer:"Проверьте способ входа на Android: Google или Telegram?"})}}};
   const previous=globalThis.fetch;
   const calls=[];let id=4501;
   globalThis.fetch=async(url,init)=>{
@@ -860,7 +860,7 @@ test("Android download and Instagram questions return only verified clickable li
 });
 
 
-test("new /start or different FAQ topic clears stale account-only follow-up",async()=>{
+test("new /start or legacy FAQ selection clears stale account-only follow-up",async()=>{
   const {env,conversations}=stub();
   let aiCalls=0;
   env.AI={run:async()=>{aiCalls++;return {response:JSON.stringify({action:"answer",answer:"Общая информация по Android."})}}};
@@ -883,7 +883,7 @@ test("new /start or different FAQ topic clears stale account-only follow-up",asy
     assert.equal(conversations.length>=2,true);
     assert.equal((await option(6166,"help:payment")).status,200);
     assert.equal(conversations.length,2,"new payment FAQ replaces account context");
-    assert.match(conversations[0].text,/FAQ selected: payment/);
+    assert.match(conversations[0].text,/Legacy FAQ button selected: payment/);
   }finally{globalThis.fetch=old;}
 });
 
@@ -1062,11 +1062,11 @@ test("start and every FAQ selection reach AI context; R2 checks nearest topic an
     assert.match(conversations[0].text,/start/);
     assert.equal(calls.filter(x=>x.method==="sendMessage").length,1);
     assert.equal((await call(env,option(12001,"payment"))).status,200);
-    assert.match(conversations[0].text,/FAQ selected: payment/);
+    assert.match(conversations[0].text,/Legacy FAQ button selected: payment/);
     assert.equal(calls.filter(x=>x.method==="sendMessage").length,1,
       "FAQ selection must not produce a canned chat reply");
     assert.equal((await call(env,ask(12002,"Как оплатить Pro?"))).status,200);
-    assert.ok(prompts[0].some(x=>String(x.content).includes("FAQ selected: payment")));
+    assert.ok(prompts[0].some(x=>String(x.content).includes("Legacy FAQ button selected: payment")));
     assert.ok(reads.includes("knowledge/payments.json"));
     assert.ok(reads.includes("knowledge/subscriptions.json"));
     assert.match(calls.filter(x=>x.method==="sendMessage").at(-1).body.text,/нет подтверждённой информации/);
@@ -1075,7 +1075,7 @@ test("start and every FAQ selection reach AI context; R2 checks nearest topic an
     reads.length=0;
     assert.equal((await call(env,option(12003,"account"))).status,200);
     assert.equal((await call(env,ask(12004,"Android вход не работает"))).status,200);
-    assert.ok(prompts.at(-1).some(x=>String(x.content).includes("FAQ selected: account")));
+    assert.ok(prompts.at(-1).some(x=>String(x.content).includes("Legacy FAQ button selected: account")));
     assert.ok(reads.includes("knowledge/android.json"));
     assert.ok(reads.includes("knowledge/accounts.json"));
     assert.match(calls.filter(x=>x.method==="sendMessage").at(-1).body.text,/Google или Telegram/);
