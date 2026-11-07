@@ -1394,3 +1394,195 @@ test("operator Telegram delivery failure is still disclosed when no report quota
     assert.equal(quotas.size,0);
   }finally{globalThis.fetch=oldFetch;console.warn=oldWarn;}
 });
+
+
+
+function enablePendingImageTestDb(env){
+  const records=new Map(),oldPrepare=env.DB.prepare.bind(env.DB);
+  env.DB.prepare=(sql)=>{
+    if(!sql.includes("pending_images"))return oldPrepare(sql);
+    return {bind(...args){return {
+      async first(){
+        if(sql.includes("WHERE tg_id=? AND status='pending'")){
+          return [...records.values()].filter(x=>x.tg_id===args[0]&&x.status==="pending"&&x.expires_at>=args[1])
+            .sort((x,y)=>y.created_at-x.created_at||y.message_id-x.message_id)[0]||null;
+        }
+        if(sql.includes("WHERE tg_id=? AND message_id=? AND token=?")){
+          const row=records.get(args[0]+":"+args[1]);
+          return row?.token===args[2]?row:null;
+        }
+        return null;
+      },
+      async run(){
+        if(sql.startsWith("INSERT INTO pending_images")){
+          const [tg_id,message_id,file_id,file_size,media_type,mime_type,lang,source,created_at,expires_at,token]=args;
+          const key=tg_id+":"+message_id;
+          if(records.has(key))throw Error("duplicate");
+          records.set(key,{tg_id,message_id,file_id,file_size,media_type,mime_type,lang,source,created_at,expires_at,token,status:"pending",claimed_at:null});
+          return {meta:{changes:1}};
+        }
+        if(sql.startsWith("UPDATE pending_images SET status='processing'")){
+          const [now,id,messageId,token,maxLease]=args,row=records.get(id+":"+messageId);
+          if(!row||row.token!==token)return {meta:{changes:0}};
+          if(maxLease===undefined?row.status!=="pending":
+             !(row.status==="pending"||(row.status==="processing"&&row.claimed_at<=maxLease)))
+            return {meta:{changes:0}};
+          row.status="processing";row.claimed_at=now;return {meta:{changes:1}};
+        }
+        if(sql.startsWith("UPDATE pending_images SET status='pending'")){
+          const row=records.get(args[0]+":"+args[1]);
+          if(row?.token===args[2]){row.status="pending";row.claimed_at=null;return {meta:{changes:1}};}
+          return {meta:{changes:0}};
+        }
+        if(sql.startsWith("DELETE FROM pending_images")){
+          if(args.length===1){
+            let n=0;for(const [k,v] of records)if(v.tg_id===args[0]){records.delete(k);n++;}
+            return {meta:{changes:n}};
+          }
+          const row=records.get(args[0]+":"+args[1]);
+          if(row?.token!==args[2])return {meta:{changes:0}};
+          records.delete(args[0]+":"+args[1]);return {meta:{changes:1}};
+        }
+        throw Error("Unmocked pending SQL: "+sql);
+      }
+    }}};
+  };
+  return records;
+}
+
+function imageFollowUpFixture(){
+  const {env}=stub();
+  const records=enablePendingImageTestDb(env);
+  const queueSent=[],telegramCalls=[];
+  let aiCalls=0,queueFails=false;
+  env.IMAGE_DELAY_QUEUE={async send(body,options){
+    if(queueFails)throw Error("queue_failure");
+    queueSent.push({body,options});
+  }};
+  env.AI={run:async(model,request)=>{
+    aiCalls++;
+    const content=request.messages.at(-1).content;
+    assert.ok(Array.isArray(content));
+    assert.ok(content.some(p=>p.type==="image_url"));
+    return {response:JSON.stringify({action:"answer",answer:"Расм ва изоҳни биргаликда таҳлил қилдим."})};
+  }};
+  const jpegOrPng=Uint8Array.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
+  const stubFetch=async(url,init)=>{
+    if(String(url).includes("/file/bot"))return new Response(jpegOrPng,{status:200});
+    const method=String(url).split("/").pop(),body=JSON.parse(init.body);
+    telegramCalls.push({method,body});
+    return Response.json({ok:true,result:method==="getFile"?{file_path:"photos/qa.png"}:{message_id:95000+telegramCalls.length}});
+  };
+  const photo=(id,userId=83001,caption=undefined)=>({update_id:id,message:{
+    chat:{id:userId,type:"private"},from:{id:userId,language_code:"uz",username:"test_photo"},
+    message_id:id,photo:[{file_id:"stored-photo-"+id,file_size:8}],...(caption?{caption}:{})
+  }});
+  const textMsg=(id,text,userId=83001)=>({update_id:id,message:{
+    chat:{id:userId,type:"private"},from:{id:userId,language_code:"uz",username:"test_photo"},
+    message_id:id,text
+  }});
+  const queueBatch=message=>({messages:[{body:message,ack(){this.acknowledged=true;},retry(opts){this.retried=opts;}}]});
+  return {env,records,queueSent,telegramCalls,stubFetch,photo,textMsg,queueBatch,
+    getAiCalls:()=>aiCalls,setQueueFails(v){queueFails=v;}};
+}
+
+test("E2E photo then explanation: one Vision call with joint text+original image, delayed Queue cannot duplicate it",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+  globalThis.fetch=f.stubFetch;
+  try{
+    const photo=f.photo(501001);
+    assert.equal((await call(f.env,photo)).status,200);
+    assert.equal(f.getAiCalls(),0);
+    assert.equal(f.queueSent.length,1);
+    assert.equal(f.queueSent[0].options.delaySeconds,60);
+    assert.equal(f.telegramCalls.length,0);
+    assert.equal((await call(f.env,photo)).status,200,"replayed webhook is ignored");
+    assert.equal(f.queueSent.length,1,"duplicate photo must not create second timer");
+    const originalAI=f.env.AI.run;
+    f.env.AI.run=async(model,request)=>{
+      assert.equal(request.messages.at(-1).content[0].text,
+        "Дарс тугмаси жуда кичик, уни каттароқ қилинг");
+      return originalAI(model,request);
+    };
+    assert.equal((await call(f.env,f.textMsg(501002,"Дарс тугмаси жуда кичик, уни каттароқ қилинг"))).status,200);
+    assert.equal(f.getAiCalls(),1);
+    assert.equal(f.records.size,0,"pending image is consumed");
+    assert.equal(f.telegramCalls.filter(x=>x.method==="sendMessage"&&x.body.chat_id===83001).length,1);
+    const queue=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(queue,f.env);
+    assert.equal(queue.messages[0].acknowledged,true);
+    assert.equal(f.getAiCalls(),1,"late delivery never responds again");
+  }finally{globalThis.fetch=oldFetch;}
+});
+
+test("E2E photo without text: Queue waits until due and Vision replies once",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+  globalThis.fetch=f.stubFetch;
+  try{
+    await call(f.env,f.photo(502001));
+    const early=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(early,f.env);
+    assert.ok(early.messages[0].retried?.delaySeconds>0);
+    assert.equal(f.getAiCalls(),0);
+    const row=[...f.records.values()][0];row.expires_at=Math.floor(Date.now()/1000)-1;
+    const due=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(due,f.env);
+    assert.equal(due.messages[0].acknowledged,true);
+    assert.equal(f.getAiCalls(),1);
+    assert.equal(f.records.size,0);
+    assert.equal(f.telegramCalls.filter(x=>x.method==="sendMessage"&&x.body.chat_id===83001).length,1);
+  }finally{globalThis.fetch=oldFetch;}
+});
+
+test("E2E personal bank verification explanation cancels image and never reaches Vision",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+  globalThis.fetch=f.stubFetch;
+  try{
+    await call(f.env,f.photo(503001));
+    await call(f.env,f.textMsg(503002,"Менинг Lava тўловимни текшириб бер, пул ечилмаган"));
+    assert.equal(f.getAiCalls(),0);
+    assert.equal(f.records.size,0);
+    assert.ok(f.telegramCalls.some(x=>x.body.text?.includes("Шахсий тўлов")));
+    const q=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(q,f.env);
+    assert.equal(q.messages[0].acknowledged,true);
+    assert.equal(f.getAiCalls(),0);
+  }finally{globalThis.fetch=oldFetch;}
+});
+
+test("E2E /start cancels pending screenshot and must not deliver a stale AI answer",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+  globalThis.fetch=f.stubFetch;
+  try{
+    await call(f.env,f.photo(504001));
+    await call(f.env,f.textMsg(504002,"/start"));
+    assert.equal(f.records.size,0);
+    const q=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(q,f.env);
+    assert.equal(f.getAiCalls(),0);
+    assert.ok(f.telegramCalls.some(x=>x.body.text?.includes("HSK AI")));
+  }finally{globalThis.fetch=oldFetch;}
+});
+
+test("E2E captioned image bypasses delay and is immediately analyzed",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+  globalThis.fetch=f.stubFetch;
+  try{
+    await call(f.env,f.photo(505001,83001,"Дарс тугмасини тополмаяпман"));
+    assert.equal(f.queueSent.length,0);
+    assert.equal(f.getAiCalls(),1);
+    assert.equal(f.records.size,0);
+  }finally{globalThis.fetch=oldFetch;}
+});
+
+test("E2E failure to enqueue falls back to immediate Vision instead of losing the photo",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch,oldWarn=console.warn;
+  globalThis.fetch=f.stubFetch;console.warn=()=>{};
+  try{
+    f.setQueueFails(true);
+    await call(f.env,f.photo(506001));
+    assert.equal(f.queueSent.length,0);
+    assert.equal(f.getAiCalls(),1);
+    assert.equal(f.records.size,0);
+  }finally{globalThis.fetch=oldFetch;console.warn=oldWarn;}
+});
