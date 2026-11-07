@@ -52,6 +52,15 @@ export function selectKnowledgeTopics(input, maximum = 2) {
     topic, order, score: TERMS[topic].reduce((count, re) => count + Number(re.test(normalized)), 0)
   })).filter(x => x.score > 0).sort((a, b) => b.score - a.score || a.order - b.order);
   if (!hits.length) return [];
+  // A Google Play Pro/payment question needs both the channel-specific rule
+  // and the relevant subscription/payment facts; otherwise the generic flow
+  // can incorrectly suggest an in-app checkout that doesn't exist in Play.
+  const play=/\\bgoogle\\s*play\\b|\\bplay\\s*market\\b|playstore|плей\\s*маркет|плеймаркет|гугл\\s*плей/u.test(normalized);
+  if(play) {
+    const financial=hits.find(x=>x.topic==="subscriptions")||
+      hits.find(x=>x.topic==="payments");
+    if(financial) return ["android",financial.topic];
+  }
   // General facts are a low-priority fallback, not a replacement for a specific topic.
   const specific = hits.filter(x => x.topic !== "general");
   const selected = (specific.length ? specific : hits).slice(0, Math.min(2, Math.max(1, maximum)));
@@ -88,6 +97,15 @@ export function selectContextualKnowledgeTopics(input, history = []) {
     .slice(-4).map(x=>String(x.content||"")).reverse();
   const past=previous.flatMap(text=>selectKnowledgeTopics(text)).filter((v,i,a)=>a.indexOf(v)===i);
   const selected=direct.length?direct.slice():past.slice(0,1);
+  // Retain the user's explicitly stated Play distribution when they follow
+  // with a short "the Pro button isn't there" message.
+  const playContext=/\\bgoogle\\s*play\\b|\\bplay\\s*market\\b|playstore|плей\\s*маркет|плеймаркет|гугл\\s*плей/u.test([input,...previous].join(" ").toLowerCase());
+  const hasProContext=/\\bpro\\b|подпис|обуна|обун|тариф|payment|оплат|тўлов|пардохт/u.test([input,...previous].join(" ").toLowerCase());
+  if(playContext && hasProContext && !/\\bdirect\\b|\\bapk\\b|сайтдан\\s+апк/u.test(String(input).toLowerCase())) {
+    const paymentTopic=direct.includes("subscriptions")||past.includes("subscriptions")?
+      "subscriptions":(direct.includes("payments")||past.includes("payments")?"payments":"subscriptions");
+    return ["android",paymentTopic];
+  }
   if (!selected.length) selected.push("general");
   for(const topic of [...past,...(RELATED[selected[0]]||[])]){
     if(selected.length>=2)break;
