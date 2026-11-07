@@ -1,6 +1,6 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
-import { generateSupportAnswer, AI_NO_FACTS, AI_QUOTA } from "./ai.js";
+import { generateSupportAnswer, AI_NO_FACTS } from "./ai.js";
 import { saveConversationExchange, clearConversationContext, sanitizeConversationText } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
 
@@ -326,7 +326,6 @@ async function handlePrivate(env, message) {
     await sendUser(env, user.id, copy.help);
     return;
   }
-  if (!await claimQuota(env, "msg-user:" + user.id, 60)) return;
   if ((message.text || "").trim() === "/operator") {
     await forwardToOperator(env, user, ctx);
     return;
@@ -358,10 +357,6 @@ async function handlePrivate(env, message) {
     const answer=await askAi(env,user.id,ctx.lang,caption || "HSK AI screenshot",image);
     if(answer===AI_NO_FACTS) {
       await sendUser(env,user.id,isUiFeedback(caption)?copy.uiFeedbackAck:copy.noKnowledge);
-      return;
-    }
-    if(answer===AI_QUOTA) {
-      await sendUser(env,user.id,copy.limit);
       return;
     }
     if(answer?.action==="report") {
@@ -407,10 +402,6 @@ async function handlePrivate(env, message) {
     await sendUser(env,user.id,copy.noKnowledge);
     return;
   }
-  if (answer===AI_QUOTA) {
-    await sendUser(env,user.id,copy.limit);
-    return;
-  }
   if (answer?.action==="report") {
     await replyToAiReport(env,user,ctx,message,answer);
     return;
@@ -424,13 +415,13 @@ async function handlePrivate(env, message) {
     return;
   }
   // Greetings and language requests never need R2 or an operator. They also
-  // remain useful when AI is unavailable or its daily budget has been reached.
+  // remain useful when AI is unavailable.
   const conversational = conversationalFallback(text, ctx.lang);
   if (conversational) {
     await sendUser(env, user.id, conversational);
     return;
   }
-  // Missing R2 knowledge, AI budget or model uncertainty is not consent
+  // Missing R2 knowledge or model uncertainty is not consent
   // to open an operator ticket.
   await sendUser(env, user.id, copy.unavailable);
 }
@@ -442,7 +433,6 @@ async function handleCallback(env, callback) {
   await telegram(env, "answerCallbackQuery", { callback_query_id: callback.id });
   const ctx = await userContext(env, callback.from);
   const copy = COPY[ctx.lang];
-  if (!await claimQuota(env, "msg-user:" + callback.from.id, 60)) return;
   if (action === "help:operator") {
     await forwardToOperator(env, callback.from, ctx);
     return;
