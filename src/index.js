@@ -653,9 +653,9 @@ async function removeLegacyBotMenusOnce(env) {
     await telegram(env,"setChatMenuButton",{menu_button:{type:"default"}},3000);
     const now=Math.floor(Date.now()/1000);
     await env.DB.prepare(
-      "INSERT INTO service_settings(key,value,updated_at) VALUES('"+key+"','1',?) "+
+      "INSERT INTO service_settings(key,value,updated_at) VALUES('"+key+"',?,?) "+
       "ON CONFLICT(key) DO UPDATE SET value='1',updated_at=excluded.updated_at"
-    ).bind(now).run();
+    ).bind("1",now).run();
   }catch(error) {
     console.warn("support_command_menu_cleanup_failed",error?.name||"Error");
   }
