@@ -75,8 +75,8 @@ test("AI can explicitly request a new R2 file and answer after it is read",async
   assert.equal(x.models.length,2);
   assert.equal(x.scanned.includes("knowledge/new_feature.json"),true);
   assert.equal(x.scanned.some(k=>k.includes("backup/")),false);
-  assert.equal(x.quota.filter(q=>q==="ai-user:17").length,1);
-  assert.equal(x.quota.filter(q=>q==="ai-global").length,1);
+  assert.equal(x.quota.filter(q=>q==="ai-user:17").length,0);
+  assert.equal(x.quota.filter(q=>q==="ai-global").length,0);
 });
 
 test("a premature handoff triggers the next documents instead of immediately dismissing the learner",async()=>{
@@ -100,7 +100,7 @@ test("all known R2 documents are scanned before final no-verified-information de
   assert.deepEqual(new Set(x.scanned),new Set(topics.map(t=>"knowledge/"+t+".json")));
   assert.ok(x.models.length>=2);
   assert.ok(x.models.length<=4);
-  assert.equal(x.quota.filter(q=>q==="ai-user:19").length,1);
+  assert.equal(x.quota.filter(q=>q==="ai-user:19").length,0);
 });
 
 test("missed/corrupted topic cannot poison the AI and other R2 documents are still searched",async()=>{
@@ -121,7 +121,7 @@ test("normal answer uses nearest records and avoids unnecessary broad search",as
   assert.equal(result,"Тасдиқланган факт асосида саволга жавоб.");
   assert.equal(x.models.length,1);
   assert.equal(x.scanned.length,3);
-  assert.equal(x.quota.length,2);
+  assert.equal(x.quota.length,0);
 });
 
 test("model cannot read unsafe objects outside knowledge namespace",async()=>{
@@ -136,7 +136,7 @@ test("model cannot read unsafe objects outside knowledge namespace",async()=>{
     {action:"search_more",topics:["feature_faq"]});
 });
 
-test("verified knowledge must exist before AI quota is spent",async()=>{
+test("no AI call occurs without verified knowledge",async()=>{
   const x=fixture(["general","payments"],async()=>({action:"answer",answer:"Not reached."}),{missing:["general","payments"]});
   const result=await generateSupportAnswer(x.env,{userId:23,lang:"ru",input:"Does HSK AI offer invoices?",claimQuota:x.claimQuota});
   assert.equal(result,null);

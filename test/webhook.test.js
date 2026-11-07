@@ -446,7 +446,7 @@ test("V2 fails closed when R2 topic is missing; no AI hallucination",async()=>{
       message_id:9902,text:"Не могу войти в аккаунт"}};
     assert.equal((await call(env,update)).status,200);
     assert.equal(aiCalls,0);
-    assert.equal(quotas.size,1,"only the user message rate limit is charged, not AI quota");
+    assert.equal(quotas.size,0,"no per-user message or AI quota is charged");
     assert.ok(!calls.some(x=>x.data.chat_id==="-100234"));
     assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id===992&&/\/operator/.test(x.data.text)));
   }finally{globalThis.fetch=orig;}
@@ -829,7 +829,7 @@ test("account menu then Android preserves sign-in context and offers localized o
     assert.match(last.text,/входа|вход/i);
     assert.doesNotMatch(last.text,/скача|загруз/ui);
     assert.equal(last.reply_markup,undefined);
-    assert.equal(quotas.has("ai-user:4500:"+new Date().toISOString().slice(0,10)),true);
+    assert.equal([...quotas.keys()].some(key=>/^(?:ai-user:|ai-global:|msg-user:)/.test(key)),false);
   } finally {globalThis.fetch=previous;}
 });
 
@@ -1273,4 +1273,57 @@ test("AI forwards the report but warns learner when screenshot copy fails",async
       /Скриншот не удалось передать/.test(x.data.text)));
     assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id==="-100234"));
   } finally{globalThis.fetch=old;}
+});
+
+test("75 sequential Support AI questions per user remain answerable without daily or global quotas",async()=>{
+  const {env,quotas}=stub();
+  let modelCalls=0;
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"HSK AI ҳақида тасдиқланган маълумот."})})};
+  const sent=[],original=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop(),data=JSON.parse(init.body);
+    if(method==="sendMessage"&&data.chat_id===82002)sent.push(data.text);
+    return Response.json({ok:true,result:{message_id:82002+sent.length}});
+  };
+  try{
+    env.AI.run=async()=>{modelCalls++;return {response:JSON.stringify({
+      action:"answer",answer:"HSK AI хитой тилини ўрганиш учун хизмат қилади."
+    })};};
+    const from={id:82002,language_code:"uz"};
+    for(let i=0;i<75;i++){
+      const update={update_id:950000+i,message:{chat:{id:82002,type:"private"},
+        from,message_id:92000+i,text:"HSK AI ҳақида маълумот беринг. Савол "+i}};
+      const response=await call(env,update);
+      assert.equal(response.status,200,"webhook update "+i+" must succeed");
+    }
+    assert.equal(modelCalls,75);
+    assert.equal(sent.length,75);
+    assert.ok(sent.every(s=>s.includes("HSK AI хитой тилини ўрганиш")));
+    assert.equal([...quotas.keys()].filter(k=>/^(?:ai-user:|ai-global:|msg-user:)/.test(k)).length,0);
+  }finally{globalThis.fetch=original;}
+});
+
+test("FAQ callbacks and AI still work after 60 messages without a user message quota",async()=>{
+  const {env,quotas}=stub();
+  const outgoing=[],original=globalThis.fetch;
+  env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"Мавжуд билимлар асосида маълумот."})})};
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop(),data=JSON.parse(init.body);
+    outgoing.push({method,data});
+    return Response.json({ok:true,result:{message_id:6100+outgoing.length}});
+  };
+  try{
+    const from={id:82003,language_code:"ru"};
+    for(let i=0;i<65;i++){
+      assert.equal((await call(env,{update_id:970000+i,message:{
+        chat:{id:82003,type:"private"},from,message_id:i+1000,
+        text:"Расскажите о HSK AI: вопрос "+i
+      }})).status,200);
+    }
+    const faq={update_id:971000,callback_query:{id:"cb_after_65",from,
+      message:{message_id:99000,chat:{id:82003,type:"private"}},data:"help:account"}};
+    assert.equal((await call(env,faq)).status,200);
+    assert.ok(outgoing.some(x=>x.method==="answerCallbackQuery"));
+    assert.equal(quotas.size,0);
+  }finally{globalThis.fetch=original;}
 });
