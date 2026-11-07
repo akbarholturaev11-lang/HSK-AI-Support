@@ -1859,3 +1859,51 @@ test("all three localized welcomes and help text work as plain chat without cate
     assert.ok(sent.every(x=>/HSK AI/.test(x.text)));
   }finally{globalThis.fetch=oldFetch;}
 });
+
+
+
+test("new plain /start + typed payment FAQ retains topic without a button choice in AI context",async()=>{
+  const {env,conversations}=stub();
+  let aiCalls=0;
+  env.AI={run:async(_model,request)=>{
+    aiCalls++;
+    const system=request.messages[0].content;
+    assert.match(system,/plain chat without category buttons/);
+    assert.match(system,/never require a menu choice/);
+    assert.doesNotMatch(system,/and the selected FAQ topic/);
+    const history=request.messages.filter(x=>x.role==="user");
+    assert.ok(history.some(x=>String(x.content).includes("Typed support question: подписка")),
+      "typed FAQ must be available as conversational evidence, not as a menu click");
+    return {response:JSON.stringify({action:"answer",answer:"Укажите, что именно не работает в версии Android."})};
+  }};
+  const sent=[],old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url).endsWith("/sendMessage"))sent.push(JSON.parse(init.body));
+    return Response.json({ok:true,result:{message_id:18000+sent.length}});
+  };
+  const user={id:71400,language_code:"ru",username:"plain_chat_user"};
+  const send=(update_id,text)=>call(env,{update_id,message:{
+    chat:{id:71400,type:"private"},from:user,message_id:update_id,text
+  }});
+  try{
+    assert.equal((await send(71401,"/start")).status,200);
+    assert.equal((await send(71402,"подписка")).status,200);
+    assert.equal(conversations.length,2,"typed FAQ replaces earlier /start history with a relevant short-term topic");
+    assert.match(conversations[0].text,/^Typed support question:/);
+    assert.doesNotMatch(conversations[0].text,/button selected|FAQ selected/);
+    assert.equal((await send(71403,"андроид")).status,200);
+    assert.equal(aiCalls,1);
+    assert.equal(sent.length,3);
+    assert.ok(sent.every(x=>!x.reply_markup),"neither start nor FAQ nor AI response adds buttons");
+  }finally{globalThis.fetch=old;}
+});
+
+test("new support start never advertises four category choices in any localized greeting",async()=>{
+  const {COPY}=await import("../src/content.js");
+  for(const lang of ["ru","tj","uz"]){
+    assert.match(COPY[lang].welcome,/HSK AI/);
+    assert.doesNotMatch(COPY[lang].welcome,/(?:выберите раздел|бахшро интихоб|бўлимни танланг)/i);
+    assert.doesNotMatch(COPY[lang].help,/(?:выбора раздела|интихоби бахш|бўлим танлаш)/i);
+    assert.equal(Object.hasOwn(COPY[lang],"buttons"),false);
+  }
+});
