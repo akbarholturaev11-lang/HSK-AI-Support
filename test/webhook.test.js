@@ -1100,7 +1100,7 @@ test("AI identifies a credible crash, forwards redacted report and keeps answeri
     assert.equal(tickets.size,1);
     assert.equal([...tickets.values()][0].source,"ai_report");
     assert.equal(events.filter(e=>e.data.chat_id===3001&&e.method==="sendMessage").length,1);
-    assert.match(events.find(e=>e.data.chat_id===3001&&e.method==="sendMessage").data.text,/Передал описание оператору/);
+    assert.match(events.find(e=>e.data.chat_id===3001&&e.method==="sendMessage").data.text,/Сообщил специалистам об ошибке/);
     assert.ok(links.size>0);
     // A later question must be processed by AI rather than copied to human operator.
     env.AI.run=async()=>({response:JSON.stringify({action:"answer",answer:"Откройте раздел уроков в приложении."})});
@@ -1149,7 +1149,7 @@ test("AI report delivery failure is disclosed, never falsely confirmed",async()=
       from:{id:3150,language_code:"ru"},message_id:9100,text:"После нажатия начать урок приложение полностью закрывается"}};
     assert.equal((await call(env,msg)).status,200);
     assert.ok(events.some(e=>e.data.chat_id===3150&&/Не смог передать обращение/.test(e.data.text)));
-    assert.ok(!events.some(e=>e.data.chat_id===3150&&/Передал описание оператору/.test(e.data.text)));
+    assert.ok(!events.some(e=>e.data.chat_id===3150&&/Сообщил специалистам об ошибке/.test(e.data.text)));
     assert.ok([...tickets.values()].every(t=>t.status==="closed"));
   } finally{globalThis.fetch=old;}
 });
