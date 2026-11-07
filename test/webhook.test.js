@@ -1270,3 +1270,33 @@ test("AI forwards the report but warns learner when screenshot copy fails",async
     assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id==="-100234"));
   } finally{globalThis.fetch=old;}
 });
+
+test("AI sees verified Play purchase restrictions rather than inventing an in-app Pro CTA",async()=>{
+  const {env}=stub();
+  const facts={
+    android:{topic:"android",source_commit:"c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073",
+      facts:["The Google Play Android HSK AI build has no in-app Pro checkout; missing Pro purchase is expected, not a bug."]},
+    subscriptions:{topic:"subscriptions",source_commit:"c8c1aaf5b2b07b40878017ae8f6bb7a60da4b073",
+      facts:["An external Telegram HSK AI Mini App has Pro purchase options at https://t.me/darsi_chini_bot for the same verified account."]}
+  };
+  env.KB={get:async key=>({json:async()=>facts[key.replace("knowledge/","").replace(".json","")]})};
+  let prompts=[];
+  env.AI={run:async(_model,payload)=>{
+    prompts=payload.messages;
+    return {response:JSON.stringify({action:"answer",
+      answer:"Google Play версиясида Pro сотиб олиш тугмаси йўқ. Telegram ўқув ботидан обуна олиш мумкин: https://t.me/darsi_chini_bot"})};
+  }};
+  const calls=[],old=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{calls.push({url:String(url),body:JSON.parse(init.body)});
+    return Response.json({ok:true,result:{message_id:1002}});};
+  try{
+    const m={update_id:99311,message:{chat:{id:915,type:"private"},
+      from:{id:915,language_code:"uz"},message_id:99311,
+      text:"Google Play версиясида Pro олиш бўлими йўқ, қаердан обуна оламан?"}};
+    assert.equal((await call(env,m)).status,200);
+    assert.ok(prompts[0].content.includes("Google Play Android HSK AI build"));
+    assert.ok(prompts[0].content.includes("https://t.me/darsi_chini_bot"));
+    assert.ok(calls.some(c=>c.body.chat_id===915 && /Google Play версиясида Pro/.test(c.body.text)));
+    assert.ok(!calls.some(c=>c.body.chat_id==="-100234"));
+  }finally{globalThis.fetch=old;}
+});
