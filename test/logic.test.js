@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, parseAiDecision, isUiFeedback, isExplicitScreenshotError } from "../src/logic.js";
-import { explicitFaq, menu } from "../src/content.js";
+import { explicitFaq } from "../src/content.js";
 
 test("Deep links select language and source, reject unexpected values", () => {
   assert.equal(parseStartCommand("/start tj_pwa"), "tj_pwa");
@@ -32,12 +32,11 @@ test("AI may answer only short valid JSON; otherwise it defers", () => {
   assert.equal(parseAiDecision('{"action":"answer","answer":"ok"}'), null);
   assert.equal(parseAiDecision('{"action":"answer","answer":123}'), null);
 });
-test("FAQ and menu are localized", () => {
+test("FAQ remains localized without a category menu", () => {
   assert.match(explicitFaq("подписка", "ru"), /Подписка|Оплата/);
   assert.match(explicitFaq("обуна", "tj"), /Пардохт/);
   assert.match(explicitFaq("тўлов", "uz"), /Тўлов/);
   assert.equal(explicitFaq("непонятный длинный вопрос с деталями о карте", "ru"), null);
-  assert.equal(menu("ru").inline_keyboard[1][1].callback_data, "help:operator");
 });
 
 test("AI supports a helpful 220-450 character explanation but rejects long monologues", () => {
