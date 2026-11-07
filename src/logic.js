@@ -71,12 +71,24 @@ export function parseAiDecision(content) {
     raw = raw.slice(firstBreak + 1, lastFence).trim();
   }
   let data;
-  try { data = JSON.parse(raw); } catch { return null; }
-  if (!data || typeof data !== "object") return null;
+  try { data = JSON.parse(raw); }
+  catch {
+    // Gemma 4 sometimes responds with normal helpful prose despite JSON instructions.
+    // Only treat plain text as an answer; NEVER auto-escalate from unstructured prose.
+    if (raw.startsWith("{") || raw.startsWith("[") || raw.length<12 || raw.length>450 ||
+        /(?:я\\s+вс[её]\\s+исправил|ошибк.{0,30}исправлен|баг\\s+(?:исправлен|устранен)|bug fixed)/iu.test(raw))
+      return null;
+    return {action:"answer",answer:raw};
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   if (data.action === "handoff") return { action: "handoff" };
-  // Some Gemma 4 responses omit action for a normal answer.
-  // Never infer a report or operator escalation from an incomplete JSON object.
-  const action=data.action===undefined && !("kind" in data) && !("summary" in data) ? "answer" : data.action;
+  // An absent action is safe to recover only with complete explicit evidence:
+  // a known kind + summary + answer means the AI did classify a report.
+  const action=data.action===undefined ?
+    (typeof data.answer==="string" && ["bug","feedback"].includes(data.kind) &&
+     typeof data.summary==="string" ? "report" :
+     (typeof data.answer==="string" && !("kind" in data) && !("summary" in data) ? "answer" : null))
+    : data.action;
   if (action !== "answer" && action !== "report") return null;
   if (typeof data.answer !== "string") return null;
   const answer = data.answer.trim();
