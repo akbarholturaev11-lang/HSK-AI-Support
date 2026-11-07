@@ -134,11 +134,18 @@ export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=
   const targetLang=detectReplyLanguage(lang,input);
   if(!env.AI && !(env.AI_API_KEY && env.AI_MODEL))return null;
   const conversational=!imageDataUrl && isConversationalTurn(input);
-  if(!await claimQuota(env,"ai-user:"+userId,20)) return AI_QUOTA;
-  if(!await claimQuota(env,"ai-global",600)) return AI_QUOTA;
+  let aiQuotaReserved=false;
+  const reserveAiQuota=async()=>{
+    if(aiQuotaReserved)return true;
+    if(!await claimQuota(env,"ai-user:"+userId,20))return false;
+    if(!await claimQuota(env,"ai-global",600))return false;
+    aiQuotaReserved=true;
+    return true;
+  };
 
   // Greetings have no business-specific facts and require no KB lookup.
   if(conversational){
+    if(!await reserveAiQuota())return AI_QUOTA;
     const facts=["HSK AI offers Chinese study in Russian, Tajik and Uzbek.",
       "Simple greetings and thanks do not require product facts."];
     const messages=providerMessages(promptForSupport(targetLang,facts),history,input,imageDataUrl);
@@ -178,6 +185,7 @@ export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=
     const batch=await readKnowledgeTopics(env,topics);
     records.push(...batch);
     if(!records.length)continue;
+    if(!await reserveAiQuota())return AI_QUOTA;
 
     const remaining=order.filter(topic=>!checked.has(topic));
     const facts=knowledgeEvidenceFacts(records);
