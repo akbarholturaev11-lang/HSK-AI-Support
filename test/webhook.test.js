@@ -1174,7 +1174,7 @@ test("explicit /operator upgrades an auto report into human-chat mode",async()=>
   }finally{globalThis.fetch=old;}
 });
 
-test("screenshot triage sends only redacted text summary, not raw image to operator",async()=>{
+test("uncertain screenshot privacy never forwards raw image",async()=>{
   const {env}=stub();
   let imageProvided=false;
   env.AI={run:async(model,request)=>{
@@ -1202,7 +1202,71 @@ test("screenshot triage sends only redacted text summary, not raw image to opera
     const admin=calls.filter(x=>String(x.data.chat_id)==="-100234");
     assert.equal(admin.length,1);
     assert.equal(admin[0].method,"sendMessage");
-    assert.ok(admin[0].data.text.includes("image not auto-forwarded"));
+    assert.ok(admin[0].data.text.includes("not attached (privacy review)"));
     assert.equal(calls.filter(x=>x.method==="copyMessage").length,0);
   }finally{globalThis.fetch=old;}
+});
+
+test("AI forwards approved screenshot as an actual Telegram image, with linked operator reply",async()=>{
+  const {env,links,tickets}=stub();
+  const calls=[],old=globalThis.fetch;
+  env.AI={run:async(model,req)=>{
+    assert.equal(req.messages.at(-1).content[1].type,"image_url");
+    return {response:JSON.stringify({action:"report",kind:"feedback",
+      answer:"Это предложение по интерфейсу стоит проверить.",
+      summary:"Кнопка начала урока кажется слишком маленькой и труднодоступной.",
+      image_safe_to_share:true})};
+  }};
+  globalThis.fetch=async(url,init)=>{
+    const name=String(url);
+    if(name.includes("/file/bot"))return new Response(Uint8Array.from([
+      0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),{status:200});
+    const method=name.split("/").pop();
+    calls.push({method,data:JSON.parse(init.body)});
+    return Response.json({ok:true,result:method==="getFile"?{file_path:"photos/screenshot.png"}:{message_id:5100+calls.length}});
+  };
+  try {
+    const update={update_id:99011,message:{chat:{id:8113,type:"private"},
+      from:{id:8113,language_code:"ru"},message_id:99011,
+      caption:"Кнопка начала урока слишком маленькая, неудобно",
+      photo:[{file_id:"public-app-screenshot",file_size:8}]}};
+    assert.equal((await call(env,update)).status,200);
+    assert.equal(tickets.size,1);
+    const operator=calls.filter(x=>x.data.chat_id==="-100234");
+    assert.deepEqual(operator.map(x=>x.method),["sendMessage","copyMessage"]);
+    assert.equal(operator[1].data.from_chat_id,8113);
+    assert.equal(operator[1].data.message_id,99011);
+    assert.ok(links.has(5100+calls.indexOf(operator[0])+1));
+    assert.ok(links.has(5100+calls.indexOf(operator[1])+1));
+    assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id===8113&&
+      /Передал описание оператору/.test(x.data.text)&&
+      !/Скриншот не удалось/.test(x.data.text)));
+  }finally{globalThis.fetch=old;}
+});
+
+test("AI forwards the report but warns learner when screenshot copy fails",async()=>{
+  const {env}=stub();
+  const calls=[],old=globalThis.fetch;
+  env.AI={run:async()=>({response:JSON.stringify({action:"report",kind:"bug",
+    answer:"На скриншоте показана ошибка запуска.",
+    summary:"После открытия урока появляется ошибка на экране.",
+    image_safe_to_share:true})})};
+  globalThis.fetch=async(url,init)=>{
+    const name=String(url);
+    if(name.includes("/file/bot"))return new Response(Uint8Array.from([
+      0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),{status:200});
+    const method=name.split("/").pop();
+    const data=JSON.parse(init.body);calls.push({method,data});
+    if(method==="copyMessage")return Response.json({ok:false,description:"Forbidden"},{status:403});
+    return Response.json({ok:true,result:method==="getFile"?{file_path:"photos/safe.png"}:{message_id:7300+calls.length}});
+  };
+  try{
+    const message={update_id:99012,message:{chat:{id:8114,type:"private"},
+      from:{id:8114,language_code:"ru"},message_id:99012,
+      caption:"Показана ошибка при запуске урока",photo:[{file_id:"safe",file_size:8}]}};
+    assert.equal((await call(env,message)).status,200);
+    assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id===8114&&
+      /Скриншот не удалось передать/.test(x.data.text)));
+    assert.ok(calls.some(x=>x.method==="sendMessage"&&x.data.chat_id==="-100234"));
+  } finally{globalThis.fetch=old;}
 });
