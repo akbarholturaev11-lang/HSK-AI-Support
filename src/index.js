@@ -246,9 +246,20 @@ async function replyToAiReport(env,user,ctx,message,report) {
       (isImage && !delivery.imageSent ? "\n"+copy.reportImageNotSent : "") :
     copy.reportFailed;
   await sendUser(env,user.id,finalText);
-  if(!message.photo?.length && !message.document) {
-    await saveConversationExchange(env,user.id,message.text||"",finalText);
-  }
+  // A reported IMAGE was previously omitted from the dialogue history.
+  // Preserve only a sanitized textual description and our actual response,
+  // never the image bytes, Telegram file ID, email, or other private evidence.
+  // This lets "it still doesn't work" refer to the error just reported.
+  const memoryInput=isImage ?
+    ("Reported HSK AI "+report.kind+": "+(report.summary||message.caption||"")) :
+    (message.text||"");
+  // Keep the *verified* delivery result at the START of the saved assistant
+  // turn. Otherwise a 300+ character AI explanation can push the specialist
+  // acknowledgment beyond the existing 350-character memory boundary.
+  const memoryAnswer=isImage && delivery?.sent ?
+    (report.kind==="bug"?copy.bugReportSent:copy.reportSent)+" "+(report.answer||"") :
+    finalText;
+  await saveConversationExchange(env,user.id,memoryInput,memoryAnswer);
 }
 
 async function telegramImage(env, message) {
@@ -354,6 +365,9 @@ async function answerAboutImage(env,user,ctx,message,caption) {
     }
     if(typeof answer==="string" && answer) {
       await sendUser(env,user.id,answer);
+      // Image-only and image+caption answers must also be available to the
+      // next text turn. saveConversationExchange sanitizes both fields.
+      await saveConversationExchange(env,user.id,caption||"User sent HSK AI screenshot",answer);
       return;
     }
     // The photo loaded. AI uncertainty must never be called a broken file.

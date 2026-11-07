@@ -6,6 +6,10 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 
 **Architecture:** Cloudflare Workers + Cloudflare D1 + native Workers AI + Telegram Bot API. **No requests to the main HSK AI Railway backend.**
 
+## Screenshot report follow-up memory
+
+Support records a **sanitized text summary and the successful Support reply** for image reports and image answers, just like ordinary text turns. It never persists the screenshot bytes or Telegram media IDs in `ai_conversation`. Short follow-ups such as "still not working" can use the prior error's context. The existing one-hour / 12-message history TTL and `/start` / FAQ reset behavior stay unchanged.
+
 ## 60-second screenshot explanation window
 
 An uncaptioned Telegram screenshot is held for up to 60 seconds before Vision analysis. If the user sends an explanation within that period, the Support bot sends the **original Telegram image plus the new text together** in one AI request. Already-captioned images continue to be analyzed immediately. A delayed Queue worker analyzes the image alone only when no text arrives; users do not see an early standalone AI answer.

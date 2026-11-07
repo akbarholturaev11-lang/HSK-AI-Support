@@ -11,7 +11,7 @@ export const AI_NO_FACTS=Symbol("ai_no_verified_facts");
 function promptForSupport(lang,facts,remainingTopics=[]) {
   return [
     "You are HSK AI Support. Reply naturally and briefly in "+({ru:"Russian",tj:"Tajik",uz:"Uzbek"}[lang]||"Russian")+".",
-    "Read the recent dialogue, including /start and the selected FAQ topic. Answer the CURRENT question, not a previous topic.",
+    "Read the recent dialogue, including screenshot reports, /start and the selected FAQ topic. A short message that a reported problem persists refers to that report; do not lose its context or imply specialists have fixed it. Answer the CURRENT question.",
     ...languageGuide(lang),
     "The verified product facts below are your only source. Use relevant facts; never invent a feature, link, price or payment status.",
     "When the user asks how to do something, use verified facts to identify a supported way to accomplish the goal, not merely explain why the attempted way is unavailable. Do not declare a feature absent unless the facts explicitly rule it out.",
@@ -130,10 +130,52 @@ const KB_MAX_AI_ROUNDS=4;
 const KB_FIRST_TOPICS=3;
 const KB_NEXT_TOPICS=2;
 
+
+// The dialogue itself confirms a prior specialist notification. For a short
+// continuation ("still not fixed"), don't reset the case to an unrelated
+// knowledge-base question or ask for another operator handoff.
+export function isReportedIssueContinuation(input,history=[]) {
+  const s=String(input||"").toLowerCase().normalize("NFKC").trim();
+  if(!s || s.length>110)return false;
+  const still=/(?:ҳоли(?:ям)?|холи(?:ям)?|ҳали\s*ҳам|хали\s*хам|тузалмади|тузатилмади|барибир\s+ишлам|ҳанӯз|хануз|то\s*ҳол|то\s*хол|ҳал\s*нашуд|ҳал\s*нашуда|по-прежнему|вс[её]\s*ещ[её]|до\s*сих\s*пор|не\s*исправил|не\s*починил|не\s*работа|still\s+(?:not|doesn.t)|not\s+fixed|not\s+working)/u.test(s);
+  if(!still)return false;
+  return history.filter(x=>x.role==="assistant").slice(-4).some(x=>
+    /(?:хатолик ҳақида мутахассисларга хабар бердим|сообщил специалистам об ошибке|дар бораи хатогӣ ба мутахассисон хабар додам)/iu.test(String(x.content||""))
+  );
+}
+
+async function answerReportedIssueContinuation(env,userId,targetLang,input,history) {
+  // No external account lookup: this is a response to the customer's update
+  // on a previously *delivered* issue, and only the chat can prove that fact.
+  // Keep this natural instead of embedding a fixed canned answer.
+  const prompt=[
+    "You are HSK AI Support. Reply naturally and briefly.",
+    ...languageGuide(targetLang),
+    "This is an update to an ALREADY REPORTED issue from the conversation, not a new request to check a private payment or resolve the provider outage yourself.",
+    "The previous assistant acknowledgment is verified evidence that the report was delivered to specialists; no fix, ETA, or current repair status is confirmed.",
+    "Acknowledge that the user still experiences the same issue. Suggest a safe next step only when justified by the dialogue. Do not claim the issue was repaired, invent a repair time, or tell the user to re-report the same error.",
+    'Return strict JSON: {"action":"answer","answer":"..."} with your own short natural reply.'
+  ].join("\n");
+  try {
+    const response=decide(await primaryProvider(env,providerMessages(prompt,history,input,null),null),targetLang);
+    if(response?.status!=="answer")return null;
+    const answer=response.answer;
+    await saveConversationExchange(env,userId,input,answer);
+    return answer;
+  }catch{
+    return null;
+  }
+}
+
 export async function generateSupportAnswer(env,{userId,lang,input,imageDataUrl=null,claimQuota}) {
   const history=await loadRecentConversation(env,userId);
   const targetLang=detectReplyLanguage(lang,input);
   if(!env.AI && !(env.AI_API_KEY && env.AI_MODEL))return null;
+  if(!imageDataUrl && isReportedIssueContinuation(input,history)){
+    const response=await answerReportedIssueContinuation(env,userId,targetLang,input,history);
+    if(response)return response;
+    // On model failure preserve the existing verified KB retrieval path.
+  }
   const conversational=!imageDataUrl && isConversationalTurn(input);
   // Greetings have no business-specific facts and require no KB lookup.
   if(conversational){
