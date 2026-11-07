@@ -348,6 +348,24 @@ async function answerAboutImage(env,user,ctx,message,caption) {
     return;
 }
 
+// An explicit operator request while a screenshot is pending must preserve
+// the user's uploaded image: forward the original Telegram message to the
+// human chat instead of silently dropping it or running delayed Vision.
+async function openOperatorWithPendingImage(env,user,ctx) {
+  const pending=env.IMAGE_DELAY_QUEUE ? await claimImageForText(env,user.id) : null;
+  try{
+    await forwardToOperator(env,user,ctx);
+    if(pending) {
+      await forwardToOperator(env,user,ctx,restoreTelegramImageMessage(pending));
+      await finishPendingImage(env,pending);
+    }
+    await cancelPendingImages(env,user.id);
+  }catch(error){
+    if(pending)try{await releasePendingImage(env,pending);}catch{}
+    throw error;
+  }
+}
+
 async function handlePrivate(env, message) {
   const user = message.from;
   if (!user || user.is_bot || message.chat?.id !== user.id) return;
@@ -379,8 +397,7 @@ async function handlePrivate(env, message) {
     return;
   }
   if ((message.text || "").trim() === "/operator") {
-    await cancelPendingImages(env,user.id);
-    await forwardToOperator(env, user, ctx);
+    await openOperatorWithPendingImage(env,user,ctx);
     return;
   }
   const ticket = await activeTicket(env, user.id);
@@ -473,7 +490,7 @@ async function handleCallback(env, callback) {
   const ctx = await userContext(env, callback.from);
   const copy = COPY[ctx.lang];
   if (action === "help:operator") {
-    await forwardToOperator(env, callback.from, ctx);
+    await openOperatorWithPendingImage(env,callback.from,ctx);
     return;
   }
   const key = action.slice(5);
