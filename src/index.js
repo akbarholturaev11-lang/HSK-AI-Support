@@ -1,7 +1,7 @@
 import { parseStartCommand, parseStartPayload, telegramLanguage, escapeHtml, limitText, dayKey, isClose, shouldAvoidAi, requiresHumanVerification, isUiFeedback } from "./logic.js";
 import { COPY, menu, explicitFaq } from "./content.js";
 import { generateSupportAnswer, AI_NO_FACTS, AI_QUOTA } from "./ai.js";
-import { saveConversationExchange, clearConversationContext } from "./conversation.js";
+import { saveConversationExchange, clearConversationContext, sanitizeConversationText } from "./conversation.js";
 import { detectReplyLanguage, conversationalFallback } from "./language.js";
 
 const ok = () => new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -79,19 +79,33 @@ async function claimQuota(env, scope, maximum, period = dayKey()) {
   return Number(result.meta?.changes || 0) > 0;
 }
 
-async function activeTicket(env, userId) {
+async function ticketForUser(env, userId) {
   return env.DB.prepare(
     "SELECT id,tg_id,lang,source FROM tickets WHERE tg_id=? AND status='open' LIMIT 1"
   ).bind(userId).first();
 }
 
+async function activeTicket(env, userId) {
+  const ticket=await ticketForUser(env,userId);
+  // AI triage reports are kept open for operator replies, NOT a full live-chat takeover.
+  return ticket?.source==="ai_report" ? null : ticket;
+}
+
 async function openTicket(env, userId, ctx) {
   const now = Math.floor(Date.now() / 1000);
+  const previous=await ticketForUser(env,userId);
+  if (previous?.source==="ai_report" && ctx.source!=="ai_report") {
+    // An explicit /operator upgrades an existing AI report to human chat mode.
+    const changed=await env.DB.prepare(
+      "UPDATE tickets SET source=?,updated_at=? WHERE id=? AND source='ai_report' AND status='open'"
+    ).bind(ctx.source,now,previous.id).run();
+    if(Number(changed.meta?.changes||0)>0) return {...previous,source:ctx.source,isNew:false,upgraded:true};
+  }
   const inserted = await env.DB.prepare(
     "INSERT OR IGNORE INTO tickets(tg_id,lang,source,status,created_at,updated_at) " +
     "VALUES(?,?,?,'open',?,?)"
   ).bind(userId, ctx.lang, ctx.source, now, now).run();
-  const ticket = await activeTicket(env, userId);
+  const ticket = await ticketForUser(env, userId);
   if (!ticket) throw new Error("ticket_missing_after_insert");
   return { ...ticket, isNew: Number(inserted.meta?.changes || 0) > 0 };
 }
@@ -112,7 +126,7 @@ async function forwardToOperator(env, user, ctx, message = null) {
   const ticket = await openTicket(env, user.id, ctx);
   const detail = message && (message.text || message.caption) ?
     limitText(message.text || message.caption, 1300) : "";
-  if (ticket.isNew) {
+  if (ticket.isNew || ticket.upgraded) {
     const username = /^[A-Za-z0-9_]{3,32}$/.test(String(user.username || "")) ?
       user.username : null;
     const displayName = username ? "@" + username : limitText(user.first_name || "User", 60);
@@ -143,8 +157,61 @@ async function forwardToOperator(env, user, ctx, message = null) {
     .bind(Math.floor(Date.now() / 1000), ticket.id).run();
   // Notify only when the ticket is first opened. Follow-up user messages
   // are silently copied to the operator, without "message delivered" spam.
-  if (ticket.isNew) {
+  if (ticket.isNew || ticket.upgraded) {
     await notifyUser(env, user.id, (COPY[ctx.lang] || COPY.ru).opened);
+  }
+}
+
+
+// AI alone decides whether the user described a plausible defect or actionable feedback.
+// Forward only a redacted text summary; never copy payment proofs, private photos or raw screenshots.
+async function forwardAiReport(env, user, ctx, report, message) {
+  if (!env.ADMIN_CHAT_ID || !["bug","feedback"].includes(report.kind)) return false;
+  const summary=sanitizeConversationText(report.summary);
+  if (!summary || shouldAvoidAi(report.summary)) return false;
+  const original=sanitizeConversationText(message.text || message.caption || "");
+  // Bound automatic traffic; user can always ask for an explicit operator.
+  if (!await claimQuota(env,"ai-report:"+user.id,3)) return false;
+  const ticket=await openTicket(env,user.id,{...ctx,source:"ai_report"});
+  if(ticket.source!=="ai_report") return false;
+  const username=/^[A-Za-z0-9_]{3,32}$/.test(String(user.username||"")) ? user.username : null;
+  const who=username ? "@"+username : limitText(user.first_name||"User",60);
+  const url=username ? "https://t.me/"+username : "tg://user?id="+user.id;
+  const isImage=Boolean(message.photo?.length||message.document);
+  const classification=report.kind==="bug" ? "🐛 Possible defect" : "💡 Product feedback";
+  const header=classification+" · AI triage\n👤 <a href=\""+url+"\"><b>"+escapeHtml(who)+
+    "</b></a> · <code>"+escapeHtml(ctx.lang)+"</code> · "+escapeHtml(ctx.source)+
+    "\n<code>/close</code>\n\n<blockquote>"+escapeHtml(summary)+"</blockquote>"+
+    (original ? "\nUser: "+escapeHtml(original.slice(0,300)) : "")+
+    (isImage ? "\n📷 Screenshot received; image not auto-forwarded for privacy." : "");
+  try {
+    const sent=await telegram(env,"sendMessage",{
+      chat_id:env.ADMIN_CHAT_ID,text:header,parse_mode:"HTML",link_preview_options:{is_disabled:true}
+    });
+    await saveAdminLink(env,sent.message_id,ticket.id);
+    await env.DB.prepare("UPDATE tickets SET updated_at=? WHERE id=?")
+      .bind(Math.floor(Date.now()/1000),ticket.id).run();
+    return true;
+  } catch {
+    // A fresh empty auto-ticket should not block the next legitimate report.
+    if(ticket.isNew) {
+      try {
+        await env.DB.prepare("UPDATE tickets SET status='closed',updated_at=? WHERE id=? AND status='open'")
+          .bind(Math.floor(Date.now()/1000),ticket.id).run();
+      } catch {}
+    }
+    console.warn("support_ai_report_delivery_failed");
+    return false;
+  }
+}
+
+async function replyToAiReport(env,user,ctx,message,report) {
+  const sent=await forwardAiReport(env,user,ctx,report,message);
+  const copy=COPY[ctx.lang]||COPY.ru;
+  const finalText=report.answer+"\n"+(sent?copy.reportSent:copy.reportFailed);
+  await sendUser(env,user.id,finalText);
+  if(!message.photo?.length && !message.document) {
+    await saveConversationExchange(env,user.id,message.text||"",finalText);
   }
 }
 
@@ -273,6 +340,10 @@ async function handlePrivate(env, message) {
       await sendUser(env,user.id,copy.limit);
       return;
     }
+    if(answer?.action==="report") {
+      await replyToAiReport(env,user,ctx,message,answer);
+      return;
+    }
     if(typeof answer==="string" && answer) {
       await sendUser(env,user.id,answer);
       return;
@@ -314,6 +385,10 @@ async function handlePrivate(env, message) {
   }
   if (answer===AI_QUOTA) {
     await sendUser(env,user.id,copy.limit);
+    return;
+  }
+  if (answer?.action==="report") {
+    await replyToAiReport(env,user,ctx,message,answer);
     return;
   }
   if (typeof answer==="string" && answer) {
