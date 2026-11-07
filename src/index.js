@@ -208,7 +208,8 @@ async function forwardAiReport(env, user, ctx, report, message) {
 async function replyToAiReport(env,user,ctx,message,report) {
   const sent=await forwardAiReport(env,user,ctx,report,message);
   const copy=COPY[ctx.lang]||COPY.ru;
-  const finalText=report.answer+"\n"+(sent?copy.reportSent:copy.reportFailed);
+  // On failed delivery, do not repeat an AI draft that may imply a report was sent.
+  const finalText=sent ? report.answer+"\n"+copy.reportSent : copy.reportFailed;
   await sendUser(env,user.id,finalText);
   if(!message.photo?.length && !message.document) {
     await saveConversationExchange(env,user.id,message.text||"",finalText);
