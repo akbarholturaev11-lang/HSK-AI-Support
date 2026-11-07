@@ -1,5 +1,7 @@
 # Support screenshot+text 60-second grace — audit (2026-11-07)
 
+> The *Existing code audited* section below describes the **pre-Queue implementation**. The image delay and D1 table are now deployed. /start is a plain chat without category buttons; historical FAQ callbacks remain supported. See [CURRENT_SUPPORT_FLOW.md](CURRENT_SUPPORT_FLOW.md).
+
 ## Existing code audited
 - Webhook verifies Telegram secret, deduplicates update_id in D1 and processes message/callback. Telegram does not send the user's typing status as a Bot API update.
 - Media is now sent immediately through telegramImage and askAi. A later text message is not joined to the photo.

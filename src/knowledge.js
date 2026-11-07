@@ -69,7 +69,8 @@ export function validateKnowledgeRecord(record, topic) {
   return facts.length ? { topic, facts, source_commit: record.source_commit } : null;
 }
 
-// Use the current question first, then the latest user/FAQ context.
+// Use the current typed question first, then recent user context.
+// Historical FAQ button selections can still appear in remembered dialogue.
 // If one topic is selected, also read the closest related R2 file.
 // At most two objects per request: no embeddings, extra AI calls or main backend load.
 const RELATED = Object.freeze({

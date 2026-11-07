@@ -1,5 +1,7 @@
 # HSK AI Support — V2 архитектура режаси
 
+> **ТАРИХИЙ РЕЖА:** 2026-11-06 қарорларидан қолган 20 та/кун лимит, эски тугмали меню ва V2 deployment қайдлари ҳозирги Production ҳолати эмас. Жорий тугмасиз Support чат, AI контексти, скриншот ва мутахассисларга хабар юбориш қоидаларини [CURRENT_SUPPORT_FLOW.md](CURRENT_SUPPORT_FLOW.md) ҳамда жорий `src/` кодидан текширинг.
+
 **Сана:** 2026-11-06
 **Ҳолат:** АРХИТЕКТУРА ҚАРОРЛАРИ ТАСДИҚЛАНГАН — V2 код реализацияси ва тўлиқ end-to-end тестлар ҳали бажарилмаган. ChatGPT Scheduled Agent жадвалга қўйилган; Cloudflare R2 private bucket ва Worker `KB` binding тайёр; биринчи 7 бўлимли English knowledge sync бажарилган. MiniMax захира модели, Unified Billing ва бюджет режада тасдиқланган, аммо тўлов ва live fallback ёқилмаган.
 **Қамров:** фақат HSK AI Support Bot. Асосий HSK AI Railway/PostgreSQL серверига сўров юборилмайди.

@@ -302,9 +302,9 @@ async function askAi(env, userId, lang, input, imageDataUrl = null) {
   }
 }
 
-async function returnToBotMenu(env, user) {
-  // Explicit /start exits the old operator conversation so new questions
-  // return to FAQ/AI rather than silently forwarding everything to admin.
+async function returnToAiChat(env, user) {
+  // Explicit /start exits human-operator mode and resumes plain AI support
+  // without any category buttons.
   const ticket = await activeTicket(env, user.id);
   if (!ticket) return;
   const result = await env.DB.prepare(
@@ -410,7 +410,7 @@ async function handlePrivate(env, message) {
   const copy = COPY[ctx.lang] || COPY.ru;
   if (start !== null) {
     await cancelPendingImages(env,user.id);
-    await returnToBotMenu(env, user);
+    await returnToAiChat(env, user);
     await clearConversationContext(env,user.id);
     await sendUser(env, user.id, copy.welcome);
     // /start is visible to the next AI turn without being another chat message.
@@ -471,11 +471,11 @@ async function handlePrivate(env, message) {
   const faq = explicitFaq(text, ctx.lang);
   if (faq) {
     await sendUser(env, user.id, faq);
-    // Keep account/login topic for the next one-word platform reply.
-    // Existing short-lived D1 memory is reused; no new table or external call.
+    // A typed question can match a verified short FAQ; remember its topic
+    // for a one-word follow-up, without introducing any menu selection.
     await clearConversationContext(env,user.id);
     await saveConversationExchange(env,user.id,
-      "FAQ selected by user: "+text, "Selected support topic: "+(
+      "Typed support question: "+text, "Matched support topic: "+(
         faq===copy.account?"Account and sign-in":faq===copy.payment?"Pro subscription payment":"Technical issue"
       ));
     return;
@@ -523,11 +523,12 @@ async function handleCallback(env, callback) {
   const key = action.slice(5);
   await cancelPendingImages(env,callback.from.id);
   await clearConversationContext(env,callback.from.id);
-  // The FAQ click is context for AI, not a new canned Telegram message.
+  // Historical inline buttons may still be clicked, so preserve their context.
+  // The plain /start experience never offers a new category picker.
   const selected={payment:"Pro subscription payment",account:"Account and sign-in",
     bug:"Technical issue"};
   await saveConversationExchange(env,callback.from.id,
-    "FAQ selected: "+key, "Selected support topic: "+selected[key]);
+    "Legacy FAQ button selected: "+key, "Previous support topic: "+selected[key]);
 
 }
 
