@@ -83,11 +83,31 @@ const RELATED = Object.freeze({
 });
 
 export function selectContextualKnowledgeTopics(input, history = []) {
-  const direct=selectKnowledgeTopics(input);
+  const current=String(input||"").toLowerCase().normalize("NFKC").trim();
+  const direct=selectKnowledgeTopics(current);
   const previous=history.filter(x=>x.role==="user")
-    .slice(-4).map(x=>String(x.content||"")).reverse();
+    .slice(-6).map(x=>String(x.content||"").toLowerCase().normalize("NFKC")).reverse();
   const past=previous.flatMap(text=>selectKnowledgeTopics(text)).filter((v,i,a)=>a.indexOf(v)===i);
-  const selected=direct.length?direct.slice():past.slice(0,1);
+  const context=[current,...previous].join(" ");
+  // Evidence-only image messages have no useful topic keywords of their own.
+  // The actual user question, not the generic Vision filename, sets the KB focus.
+  const screenshotOnly=/^(?:hsk ai screenshot|screenshot|скриншот|сурат|расм)$/u.test(current);
+  const followUp=screenshotOnly || (!direct.length && current.length<90) ||
+    /^(?:лекин|аммо|но|но вот|но у меня|бироқ|барибир|ҳали|хали|вапше|вапще|барибир)/u.test(current);
+  const proPattern=/\bpro\b|\bpro\s+olish\b|про\b|подпис|обуна|обун|тариф|лимит|purchase|subscription/u;
+  const playPattern=/google\s*play|play\s*market|плей\s*маркет|плеймаркет|гугл\s*плей|android|андроид/u;
+  const purchasePattern=/сотиб\s*ол|покуп|купить|олиш|оплат|тўлов|тулов|пардохт|платеж|payment|checkout|топа\s*ол|кўринма|куринма|йўқ|ёк|нет|куда|қаер|каер/u;
+  const proRelevant=proPattern.test(current) ||
+    (followUp && proPattern.test(previous.join(" ")));
+  const androidRelevant=playPattern.test(current) ||
+    (followUp && playPattern.test(previous.join(" ")));
+  const otherPlatform=/iphone|айфон|ios\b|\bpwa\b|safari/u.test(current);
+  if(proRelevant && androidRelevant && !otherPlatform)
+    return ["android","subscriptions","pwa"];
+  if(proRelevant && (screenshotOnly || purchasePattern.test(current)))
+    return ["subscriptions","payments","pwa"];
+  const selected=(screenshotOnly && past.length) ? past.slice(0,1) :
+    direct.length ? direct.slice() : past.slice(0,1);
   if (!selected.length) selected.push("general");
   for(const topic of [...past,...(RELATED[selected[0]]||[])]){
     if(selected.length>=2)break;
@@ -109,5 +129,10 @@ export async function lookupKnowledge(env, input, { history = [] } = {}) {
     }catch { /* Try the second, related topic rather than stopping prematurely. */ }
   }
   if (!loaded.length) return { status:"unavailable" };
-  return { status:"ok",topics:loaded.map(x=>x.topic),facts:loaded.flatMap(x=>x.facts).slice(0,32) };
+  // Preserve evidence from all three relevant channels instead of taking
+  // only the first 32 facts (which previously buried PWA facts behind manuals).
+  const facts=loaded.length===3 ?
+    loaded.flatMap((item,i)=>item.facts.slice(0,[12,10,10][i])) :
+    loaded.flatMap(item=>item.facts).slice(0,32);
+  return { status:"ok",topics:loaded.map(x=>x.topic),facts };
 }
