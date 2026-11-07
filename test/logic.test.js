@@ -78,3 +78,12 @@ test("visual feedback identifies UX criticisms but not personal payment checks",
   assert.equal(isUiFeedback("Как войти в аккаунт?"),false);
   assert.equal(isUiFeedback("Как открыть интерфейс оплаты?"),false);
 });
+
+test("AI report JSON validates classification and factual summary",()=>{
+  const x={action:"report",kind:"bug",answer:"Похоже на сбой. Уточните модель телефона.",summary:"Приложение закрывается сразу после открытия урока."};
+  assert.deepEqual(parseAiDecision(JSON.stringify(x)),x);
+  assert.equal(parseAiDecision(JSON.stringify({...x,kind:"account_takeover"})),null);
+  assert.equal(parseAiDecision(JSON.stringify({...x,summary:"ok"})),null);
+  assert.equal(parseAiDecision(JSON.stringify({...x,answer:"ok"})),null);
+  assert.equal(parseAiDecision(JSON.stringify({...x,summary:"x".repeat(241)})),null);
+});
