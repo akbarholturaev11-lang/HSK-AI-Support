@@ -1327,3 +1327,70 @@ test("FAQ callbacks and AI still work after 60 messages without a user message q
     assert.equal(quotas.size,0);
   }finally{globalThis.fetch=original;}
 });
+
+test("automatic bug/feedback delivery has no hidden daily limit, including after prior 3/3 quota",async()=>{
+  const {env,quotas,tickets,links}=stub();
+  const userId=82220;
+  quotas.set("ai-report:"+userId+":"+new Date().toISOString().slice(0,10),3);
+  let n=0;
+  env.AI={run:async()=>({response:JSON.stringify({
+    action:"report",kind:n++%2===0?"bug":"feedback",
+    answer:"Мурожаатингиз бўйича маълумотни ёзиб олдим.",
+    summary:"Фойдаланувчи HSK AI илова интерфейси ёки дарсларидаги муаммони қайд этди."
+  })})};
+  const sent=[],oldFetch=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop(),payload=JSON.parse(init.body);
+    sent.push({method,payload});
+    return Response.json({ok:true,result:{message_id:32000+sent.length}});
+  };
+  try{
+    const from={id:userId,language_code:"uz",username:"report_tester"};
+    for(let i=0;i<7;i++){
+      const update={update_id:981000+i,message:{
+        chat:{id:userId,type:"private"},from,message_id:981000+i,
+        text:"HSK AI дарси ёпилиб қоляпти, такрорий тест "+(i+1)
+      }};
+      assert.equal((await call(env,update)).status,200);
+    }
+    const admin=sent.filter(x=>x.method==="sendMessage"&&x.payload.chat_id==="-100234");
+    const replies=sent.filter(x=>x.method==="sendMessage"&&x.payload.chat_id===userId);
+    assert.equal(admin.length,7,"each independently classified report reaches operator");
+    assert.equal(replies.length,7);
+    assert.ok(replies.every(x=>/операторга етказдим/.test(x.payload.text)));
+    assert.equal(quotas.get("ai-report:"+userId+":"+new Date().toISOString().slice(0,10)),3,
+      "legacy daily quota is ignored and never incremented");
+    assert.equal(tickets.size,1,"reports share a single open operator reply ticket");
+    assert.equal([...tickets.values()][0].source,"ai_report");
+    assert.equal(links.size,7,"each forwarded report supports operator replies");
+  }finally{globalThis.fetch=oldFetch;}
+});
+
+test("operator Telegram delivery failure is still disclosed when no report quota exists",async()=>{
+  const {env,quotas}=stub();
+  env.AI={run:async()=>({response:JSON.stringify({
+    action:"report",kind:"bug",
+    answer:"Илова ёпилиши такрорланаётганини тушундим.",
+    summary:"Android HSK2 дарси очилганда илова ёпилиб қолади."
+  })})};
+  const sent=[],oldFetch=globalThis.fetch,oldWarn=console.warn,warning=[];
+  console.warn=(...args)=>warning.push(args);
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop(),body=JSON.parse(init.body);
+    sent.push({method,body});
+    if(method==="sendMessage"&&body.chat_id==="-100234")
+      return Response.json({ok:false,description:"Forbidden"},{status:403});
+    return Response.json({ok:true,result:{message_id:58000+sent.length}});
+  };
+  try{
+    const msg={update_id:982000,message:{chat:{id:82221,type:"private"},
+      from:{id:82221,language_code:"uz"},message_id:982000,
+      text:"Android HSK2 дарсида Start босилганда илова ёпилади"}};
+    assert.equal((await call(env,msg)).status,200);
+    assert.ok(sent.some(x=>x.method==="sendMessage"&&x.body.chat_id===82221&&
+      /Мурожаатни операторга етказа олмадим/.test(x.body.text)));
+    assert.ok(warning.some(args=>args[0]==="support_ai_report_delivery_failed"&&
+      args[1]==="operator_send"&&args[2]==="telegram_http_403"));
+    assert.equal(quotas.size,0);
+  }finally{globalThis.fetch=oldFetch;console.warn=oldWarn;}
+});
