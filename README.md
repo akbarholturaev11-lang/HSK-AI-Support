@@ -6,6 +6,14 @@ GitHub: https://github.com/akbarholturaev11-lang/HSK-AI-Support
 
 **Architecture:** Cloudflare Workers + Cloudflare D1 + native Workers AI + Telegram Bot API. **No requests to the main HSK AI Railway backend.**
 
+## 60-second screenshot explanation window
+
+An uncaptioned Telegram screenshot is held for up to 60 seconds before Vision analysis. If the user sends an explanation within that period, the Support bot sends the **original Telegram image plus the new text together** in one AI request. Already-captioned images continue to be analyzed immediately. A delayed Queue worker analyzes the image alone only when no text arrives; users do not see an early standalone AI answer.
+
+Implementation: additive short-lived D1 table `pending_images`, Cloudflare Queue `hsk-ai-support-image-delay` and Worker binding `IMAGE_DELAY_QUEUE`. Only a Telegram file reference and routing metadata are stored, never screenshot bytes, raw captions or OCR. See `docs/IMAGE_GRACE_60S_AUDIT_2026-11-07.md` and `migrations/002_pending_images.sql`. Queue availability and its consumer are separate release dependencies; GitHub merge alone does not activate the feature.
+
+Telegram Bot API does not publish whether the user is currently typing to the bot, so the fixed 60s grace is the only supported hold. A delayed Queue may run after 60 seconds rather than at an exact wall-clock deadline.
+
 ## Knowledge Base (R2)
 
 - Private R2 Standard bucket: `hsk-ai-support-kb` (Eastern Europe).

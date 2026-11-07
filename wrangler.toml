@@ -21,6 +21,17 @@ PUBLIC_WORKER_ORIGIN = "https://hsk-ai-support.hskaiiapp.workers.dev"
 [triggers]
 crons = ["*/5 * * * *", "0 3 * * *"]
 
+[[queues.producers]]
+binding = "IMAGE_DELAY_QUEUE"
+queue = "hsk-ai-support-image-delay"
+
+[[queues.consumers]]
+queue = "hsk-ai-support-image-delay"
+max_batch_size = 5
+max_batch_timeout = 1
+max_retries = 5
+retry_delay = 30
+
 [[d1_databases]]
 binding = "DB"
 database_name = "hsk-ai-support"
