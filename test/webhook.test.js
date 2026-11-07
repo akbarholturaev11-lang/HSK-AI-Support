@@ -264,18 +264,23 @@ test("Cron registers webhook once using secret without exposing it", async () =>
   };
   try {
     await worker.scheduled({cron:"*/5 * * * *"}, env);
-    assert.equal(called.length, 2);
+    assert.equal(called.length, 11);
     assert.equal(called[0].method, "getMe");
     assert.equal(called[1].method, "setWebhook");
     assert.equal(called[1].data.secret_token, "secret");
     assert.equal(called[1].data.url, env.PUBLIC_WORKER_ORIGIN + "/webhook");
     assert.equal(settings.get("webhook_status").value, "registered");
+    assert.equal(called.filter(x=>x.method==="deleteMyCommands").length,8,
+      "clear all default and private chat command scopes in RU/TJ/UZ");
+    assert.ok(called.some(x=>x.method==="setChatMenuButton"&&x.data.menu_button?.type==="default"));
+    assert.equal(settings.get("support_commands_hidden_v1")?.value,"1");
+
     await worker.scheduled({cron:"*/5 * * * *"}, env);
-    assert.equal(called.length, 2, "repeated cron must not call Telegram again");
+    assert.equal(called.length, 11, "repeated cron must not call Telegram again");
     env.WEBHOOK_SECRET = "secret-rotated";
     settings.delete("webhook_last_attempt");
     await worker.scheduled({cron:"*/5 * * * *"}, env);
-    assert.equal(called.length, 4, "rotating secret should register webhook again");
+    assert.equal(called.length, 13, "rotating secret should register webhook again without recreating commands");
   } finally { globalThis.fetch = original; }
 });
 
@@ -652,7 +657,7 @@ test("operator chat is explicitly opened, follows up silently and closes on admi
 });
 
 
-test("buttons render only on /start, never on FAQ, topic callback, AI, or safe fallback", async () => {
+test("start and follow-up messages have no category buttons; old callbacks still work", async () => {
   const {env,tickets}=stub();
   env.AI_MODEL="@cf/google/gemma-4-26b-a4b-it";
   env.AI={run:async()=>({response:JSON.stringify({action:"answer",answer:"HSK AI помогает изучать китайский язык."})})};
@@ -668,7 +673,7 @@ test("buttons render only on /start, never on FAQ, topic callback, AI, or safe f
   try{
     assert.equal((await send(8100,"/start")).status,200);
     assert.equal(calls.filter(c=>c.method==="sendMessage").length,1);
-    assert.equal(calls[0].payload.reply_markup.inline_keyboard.length,2);
+    assert.equal(calls[0].payload.reply_markup,undefined,"/start must be button-free");
     assert.equal((await call(env,{update_id:8101,callback_query:{
       id:"callback8101",from:user,message:{message_id:101,chat:{id:812,type:"private"}},data:"help:payment"
     }})).status,200);
@@ -679,9 +684,9 @@ test("buttons render only on /start, never on FAQ, topic callback, AI, or safe f
     assert.equal((await send(8106,"/help")).status,200);
     const userMessages=calls.filter(c=>c.method==="sendMessage"&&c.payload.chat_id===812);
     assert.equal(userMessages.length,6);
-    assert.ok(userMessages[0].payload.reply_markup);
+    assert.equal(userMessages[0].payload.reply_markup,undefined);
     for(const item of userMessages.slice(1)){
-      assert.equal(item.payload.reply_markup,undefined,"only /start may include menu buttons");
+      assert.equal(item.payload.reply_markup,undefined,"Support never emits menu buttons");
     }
     assert.ok(userMessages.some(c=>/\/operator/.test(c.payload.text)));
     assert.equal(tickets.size,0,"FAQ/AI/fallback/personal payment must not create tickets");
@@ -734,7 +739,7 @@ test("/start returns from open operator ticket to AI and restores one menu",asyn
     assert.equal(tickets.get(1).status,"closed");
     assert.equal(calls.length,before+2,"admin is informed once; user gets one menu");
     assert.match(calls.at(-1).data.text,/Здравствуйте/);
-    assert.ok(calls.at(-1).data.reply_markup?.inline_keyboard);
+    assert.equal(calls.at(-1).data.reply_markup,undefined);
     const last=calls.length;
     assert.equal((await send(8302,"Что такое HSK AI?")).status,200);
     assert.ok(calls.slice(last).some(x=>x.method==="sendMessage"&&x.data.chat_id===814&&/помогает/.test(x.data.text)));
@@ -775,8 +780,8 @@ test("Uzbek language request works without a picker, R2 facts or auto-operator",
     assert.match(messages.at(-1).text,/Ўзбек тилида/);
     assert.equal((await send(9102,"ээээ")).status,200);
     assert.equal(users.get(901).lang,"uz","ambiguous messages must retain preferred language");
-    assert.equal(messages[0].reply_markup?.inline_keyboard?.length,2);
-    assert.ok(messages.slice(1).every(m=>!m.reply_markup),"menu appears only on /start");
+    assert.equal(messages[0].reply_markup,undefined);
+    assert.ok(messages.slice(1).every(m=>!m.reply_markup),"all Support replies are button-free");
     assert.equal(tickets.size,0,"social turns cannot open operator tickets");
   }finally{globalThis.fetch=original;}
 });
@@ -985,7 +990,7 @@ test("official support links stay clickable without Telegram preview cards", asy
     assert.equal(userMessages.length,2,"FAQ selection adds context but no chat bubble");
     assert.ok(userMessages.every(m=>m.params.link_preview_options?.is_disabled===true));
     assert.match(userMessages[1].params.text,/помощь|поддержка/i);
-    assert.ok(userMessages[0].params.reply_markup,"/start keeps buttons");
+    assert.equal(userMessages[0].params.reply_markup,undefined,"/start is button-free");
     assert.equal(userMessages[1].params.reply_markup,undefined,"follow-up stays button-free");
   } finally {globalThis.fetch=oldFetch;}
 });
@@ -1827,4 +1832,29 @@ test("long photo error response retains verified specialist notification inside 
    assert.ok(f.conversations[1].text.length<=350);
    assert.equal(f.conversations[0].text.includes("Lava checkout"),true);
  }finally{globalThis.fetch=oldFetch;}
+});
+
+
+test("all three localized welcomes and help text work as plain chat without category keyboard", async () => {
+  const {env}=stub();
+  const sent=[];
+  const oldFetch=globalThis.fetch;
+  globalThis.fetch=async(url,init)=>{
+    const method=String(url).split("/").pop(),data=JSON.parse(init.body);
+    if(method==="sendMessage")sent.push(data);
+    return Response.json({ok:true,result:{message_id:900+sent.length}});
+  };
+  try{
+    for(const [i,lang] of ["ru","tg","uz"].entries()){
+      const id=70000+i;
+      assert.equal((await call(env,{update_id:60000+i,message:{
+        chat:{id,type:"private"},from:{id,language_code:lang},
+        message_id:1,text:"/start"
+      }})).status,200);
+    }
+    assert.equal(sent.length,3);
+    assert.ok(sent.every(x=>x.reply_markup===undefined));
+    assert.ok(sent.every(x=>!/select|выберите раздел|бахшро интихоб|бўлимни танланг/i.test(x.text)));
+    assert.ok(sent.every(x=>/HSK AI/.test(x.text)));
+  }finally{globalThis.fetch=oldFetch;}
 });
