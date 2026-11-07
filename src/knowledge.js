@@ -135,3 +135,104 @@ export async function lookupKnowledge(env, input, { history = [] } = {}) {
     loaded.flatMap(item=>item.facts).slice(0,32);
   return { status:"ok",topics:loaded.map(x=>x.topic),facts };
 }
+
+
+// Discover every approved top-level KB topic from R2, including new topic
+// files created by the independent KB synchronizer. Backups and sync_state
+// are not product evidence, and are NEVER loaded into model context.
+const KB_TOPIC_RE=/^knowledge\/([a-z][a-z0-9_-]{0,63})\.json$/;
+const RESERVED_TOPICS=new Set(["sync_state","index","manifest","backup","secrets","private"]);
+const CATALOGUE_MAX_PAGES=20;
+
+export async function discoverKnowledgeTopics(env) {
+  if (!env.KB) return {status:"unconfigured",topics:[]};
+  if (typeof env.KB.list!=="function")
+    return {status:"fallback",topics:[...KNOWLEDGE_TOPICS]};
+  let cursor, pages=0;
+  const topics=new Set();
+  const visited=new Set();
+  try {
+    do {
+      const options={prefix:"knowledge/",delimiter:"/",limit:1000};
+      if(cursor) options.cursor=cursor;
+      const list=await env.KB.list(options);
+      if (!Array.isArray(list?.objects)) throw new Error("invalid_r2_catalogue");
+      for(const item of list.objects){
+        const match=KB_TOPIC_RE.exec(String(item.key||""));
+        if(match&&!RESERVED_TOPICS.has(match[1])&&!match[1].startsWith("_"))
+          topics.add(match[1]);
+      }
+      pages++;
+      if(!list.truncated)break;
+      if(!list.cursor || visited.has(list.cursor)) throw new Error("invalid_r2_cursor");
+      visited.add(list.cursor);
+      cursor=list.cursor;
+    } while(pages<CATALOGUE_MAX_PAGES);
+    if(pages>=CATALOGUE_MAX_PAGES && cursor)
+      return {status:"partial",topics:[...topics]};
+    return {status:"ok",topics:[...topics]};
+  }catch{
+    // An R2 listing outage must not prevent retrieval of the seven known
+    // verified product facts. Never treat backup or private keys as topics.
+    return {status:"fallback",topics:[...new Set([...topics,...KNOWLEDGE_TOPICS])]};
+  }
+}
+
+export function rankKnowledgeTopics(input, history=[], discovered=KNOWLEDGE_TOPICS) {
+  const catalogue=[...new Set(discovered.filter(x=>
+    /^[a-z][a-z0-9_-]{0,63}$/.test(x)&&!RESERVED_TOPICS.has(x)
+  ))];
+  const query=String(input||"").toLowerCase().normalize("NFKC");
+  const prior=history.filter(x=>x.role==="user").slice(-6)
+    .map(x=>String(x.content||"").toLowerCase().normalize("NFKC")).join(" ");
+  const priority=selectContextualKnowledgeTopics(input,history).filter(x=>catalogue.includes(x));
+  // New topic files are discoverable without a code update. If a topic name
+  // is explicitly mentioned, put it ahead of less-relevant generic files.
+  const custom=catalogue.filter(x=>!KNOWLEDGE_TOPICS.includes(x))
+    .map(topic=>{
+      const tokens=topic.split(/[_-]/).filter(x=>x.length>2);
+      const direct=tokens.filter(x=>query.includes(x)).length;
+      const contextual=tokens.filter(x=>prior.includes(x)).length;
+      return {topic,score:direct*3+contextual};
+    }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score)
+    .map(x=>x.topic);
+  const direct=selectKnowledgeTopics(query,KNOWLEDGE_TOPICS.length).filter(x=>catalogue.includes(x));
+  const past=selectKnowledgeTopics(prior,KNOWLEDGE_TOPICS.length).filter(x=>catalogue.includes(x));
+  return [...new Set([...custom,...priority,...direct,...past,...catalogue])];
+}
+
+export async function readKnowledgeTopics(env, topics) {
+  const records=[];
+  for(const topic of [...new Set(topics)]){
+    if(!/^[a-z][a-z0-9_-]{0,63}$/.test(topic)||RESERVED_TOPICS.has(topic))continue;
+    try{
+      const object=await env.KB.get("knowledge/"+topic+".json");
+      if(!object)continue;
+      const valid=validateKnowledgeRecord(await object.json(),topic);
+      if(valid)records.push(valid);
+    }catch{
+      // Invalid or missing documents are skipped; later verified files remain
+      // accessible to the model. Never use arbitrary R2 objects as evidence.
+    }
+  }
+  return records;
+}
+
+export function knowledgeEvidenceFacts(records,maxChars=90000) {
+  // Round-robin sampling prevents the early files from crowding out all
+  // evidence from newly discovered topics. With the current KB every valid
+  // fact fits; limits avoid unbounded model input if the catalogue grows.
+  const out=[];
+  let size=0;
+  const maxDepth=Math.max(0,...records.map(x=>x.facts.length));
+  for(let i=0;i<maxDepth;i++){
+    for(const record of records){
+      const fact=record.facts[i];
+      if(!fact)continue;
+      const entry="["+record.topic+"] "+fact;
+      if(size+entry.length>maxChars)continue;
+      out.push(entry);size+=entry.length;
+    }
+  }
+  return out;
+}
