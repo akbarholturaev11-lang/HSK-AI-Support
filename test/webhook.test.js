@@ -1586,3 +1586,34 @@ test("E2E failure to enqueue falls back to immediate Vision instead of losing th
     assert.equal(f.records.size,0);
   }finally{globalThis.fetch=oldFetch;console.warn=oldWarn;}
 });
+
+
+test("E2E screenshot + later feedback forwards its ORIGINAL photo to operator once",async()=>{
+  const f=imageFollowUpFixture(),oldFetch=globalThis.fetch;
+  let modelCalls=0;
+  f.env.AI.run=async(_model,request)=>{
+    modelCalls++;
+    assert.equal(request.messages.at(-1).content[0].text,"Дарсни бошлаш тугмаси кўринмайди");
+    return {response:JSON.stringify({action:"report",kind:"feedback",
+      answer:"Тугма кўриниши бўйича таклифингизни тушундим.",
+      summary:"Фойдаланувчи дарсни бошлаш тугмаси яхши кўринмаслигини таъкидлади.",
+      image_safe_to_share:true})};
+  };
+  globalThis.fetch=f.stubFetch;
+  try{
+    const photo=f.photo(507001);
+    await call(f.env,photo);
+    assert.equal(f.telegramCalls.length,0);
+    await call(f.env,f.textMsg(507002,"Дарсни бошлаш тугмаси кўринмайди"));
+    const operator=f.telegramCalls.filter(x=>x.body.chat_id==="-100234");
+    assert.deepEqual(operator.map(x=>x.method),["sendMessage","copyMessage"]);
+    assert.equal(operator[1].body.from_chat_id,83001);
+    assert.equal(operator[1].body.message_id,507001,"use screenshot id, NOT the later text id");
+    assert.ok(operator[0].body.text.includes("Дарсни бошлаш тугмаси кўринмайди"));
+    assert.equal(f.records.size,0);
+    const event=f.queueBatch(f.queueSent[0].body);
+    await worker.queue(event,f.env);
+    assert.equal(event.messages[0].acknowledged,true);
+    assert.equal(modelCalls,1);
+  }finally{globalThis.fetch=oldFetch;}
+});
