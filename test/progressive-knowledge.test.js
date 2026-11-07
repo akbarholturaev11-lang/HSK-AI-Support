@@ -28,7 +28,7 @@ function fixture(names, onAI, {list=true,missing=[]}={}){
     models.push(request);
     return {response:JSON.stringify(await onAI(models.length,request))};
   }}};
-  const claimQuota=async(key)=>{quota.push(key);return true;};
+  const claimQuota=async(_env,key)=>{quota.push(key);return true;};
   return {env,scanned,models,quota,claimQuota,records};
 }
 
@@ -109,7 +109,7 @@ test("missed/corrupted topic cannot poison the AI and other R2 documents are sti
     {action:"answer",answer:"Тасдиқланган маълумот кейинги билим бўлимида топилди."},{missing:["general"]});
   x.records.set("accounts",{topic:"accounts",source_commit:"incorrect",facts:["Unverified secret"]});
   const result=await generateSupportAnswer(x.env,{userId:20,lang:"uz",input:"FAQ of HSK AI",claimQuota:x.claimQuota});
-  assert.equal(result,"Тасдиқланган маълумот кейинги билим бўлимида топилди.");
+  assert.match(result,/^Тасдиқланган маълумот кейинги билим бўлимида топилди/);
   assert.ok(x.models.every(m=>!m.messages[0].content.includes("Unverified secret")));
 });
 
@@ -129,7 +129,7 @@ test("model cannot read unsafe objects outside knowledge namespace",async()=>{
     {action:"search_more",topics:["../private","sync_state","backup","feature_faq"]}:
     {action:"answer",answer:"Маълумот топилди."});
   const result=await generateSupportAnswer(x.env,{userId:22,lang:"ru",input:"HSK support question",claimQuota:x.claimQuota});
-  assert.equal(typeof result,"string");
+  assert.equal(result,AI_NO_FACTS,"no other verified topics remain; fail closed");
   assert.ok(x.scanned.every(k=>/^knowledge\/[a-z][a-z0-9_-]*\.json$/.test(k)));
   assert.ok(!x.scanned.some(k=>/sync_state|backup|private/.test(k)));
   assert.deepEqual(parseAiDecision(JSON.stringify({action:"search_more",topics:["../private","feature_faq"]})),
